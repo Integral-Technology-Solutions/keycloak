@@ -29,14 +29,7 @@ import org.keycloak.provider.ProviderConfigProperty;
 import java.util.List;
 
 import static java.util.Arrays.asList;
-import static org.keycloak.authentication.authenticators.browser.ConditionalOtpFormAuthenticator.DEFAULT_OTP_OUTCOME;
-import static org.keycloak.authentication.authenticators.browser.ConditionalOtpFormAuthenticator.FORCE;
-import static org.keycloak.authentication.authenticators.browser.ConditionalOtpFormAuthenticator.FORCE_OTP_FOR_HTTP_HEADER;
-import static org.keycloak.authentication.authenticators.browser.ConditionalOtpFormAuthenticator.FORCE_OTP_ROLE;
-import static org.keycloak.authentication.authenticators.browser.ConditionalOtpFormAuthenticator.OTP_CONTROL_USER_ATTRIBUTE;
-import static org.keycloak.authentication.authenticators.browser.ConditionalOtpFormAuthenticator.SKIP;
-import static org.keycloak.authentication.authenticators.browser.ConditionalOtpFormAuthenticator.SKIP_OTP_FOR_HTTP_HEADER;
-import static org.keycloak.authentication.authenticators.browser.ConditionalOtpFormAuthenticator.SKIP_OTP_ROLE;
+import static org.keycloak.authentication.authenticators.browser.ConditionalOtpFormAuthenticator.*;
 import static org.keycloak.provider.ProviderConfigProperty.LIST_TYPE;
 import static org.keycloak.provider.ProviderConfigProperty.ROLE_TYPE;
 import static org.keycloak.provider.ProviderConfigProperty.STRING_TYPE;
@@ -152,6 +145,14 @@ public class ConditionalOtpFormAuthenticatorFactory implements AuthenticatorFact
         forceOtpForHttpHeader.setHelpText("OTP required if a HTTP request header matches the given pattern.");
         forceOtpForHttpHeader.setDefaultValue("");
 
+        ProviderConfigProperty requireStepUpAuth = new ProviderConfigProperty();
+        requireStepUpAuth.setType(LIST_TYPE);
+        requireStepUpAuth.setName(REQUIRES_STEP_UP);
+        requireStepUpAuth.setLabel("Require step up auth");
+        requireStepUpAuth.setOptions(asList(YES, NO));
+        requireStepUpAuth.setHelpText("Does this user require additional step up authentication to access secure content?");
+        requireStepUpAuth.setDefaultValue("");
+
         ProviderConfigProperty defaultOutcome = new ProviderConfigProperty();
         defaultOutcome.setType(LIST_TYPE);
         defaultOutcome.setName(DEFAULT_OTP_OUTCOME);
@@ -159,6 +160,6 @@ public class ConditionalOtpFormAuthenticatorFactory implements AuthenticatorFact
         defaultOutcome.setOptions(asList(SKIP, FORCE));
         defaultOutcome.setHelpText("What to do in case of every check abstains. Defaults to force OTP authentication.");
 
-        return asList(forceOtpUserAttribute, skipOtpRole, forceOtpRole, skipOtpForHttpHeader, forceOtpForHttpHeader, defaultOutcome);
+        return asList(forceOtpUserAttribute, skipOtpRole, forceOtpRole, skipOtpForHttpHeader, forceOtpForHttpHeader, requireStepUpAuth, defaultOutcome);
     }
 }

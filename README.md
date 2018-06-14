@@ -43,8 +43,8 @@ To start Keycloak during development first build as specified above, then run:
 
 To start Keycloak from the server distribution first build the distribution it as specified above, then run:
 
-    tar xfz distribution/server-dist/target/keycloak-<VERSION>.tar.gz
-    cd keycloak-<VERSION>
+    tar xfz distribution/server-dist/target/keycloak-3.4.3.Final.tar.gz
+    cd keycloak-3.4.3.Final
     bin/standalone.sh
     
 To stop the server press `Ctrl + C`.

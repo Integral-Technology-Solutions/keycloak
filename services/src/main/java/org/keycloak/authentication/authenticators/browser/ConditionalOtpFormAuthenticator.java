@@ -88,6 +88,10 @@ public class ConditionalOtpFormAuthenticator extends OTPFormAuthenticator {
 
     public static final String FORCE = "force";
 
+    public static final String YES = "Yes";
+
+    public static final String NO = "No";
+
     public static final String OTP_CONTROL_USER_ATTRIBUTE = "otpControlAttribute";
 
     public static final String SKIP_OTP_ROLE = "skipOtpRole";
@@ -100,8 +104,24 @@ public class ConditionalOtpFormAuthenticator extends OTPFormAuthenticator {
 
     public static final String DEFAULT_OTP_OUTCOME = "defaultOtpOutcome";
 
+    public static final String REQUIRES_STEP_UP = "requireStepUp";
+
     enum OtpDecision {
         SKIP_OTP, SHOW_OTP, ABSTAIN
+    }
+
+    enum StepUpRoles { //Could be extended to return lists of roles
+        USER("user"),
+        SECURED("secured");
+
+        private String role;
+        StepUpRoles(String role) {
+            this.role = role;
+        }
+
+        public String getRole() {
+            return role;
+        }
     }
 
     @Override
@@ -271,6 +291,22 @@ public class ConditionalOtpFormAuthenticator extends OTPFormAuthenticator {
         return ABSTAIN;
     }
 
+    private OtpDecision voteForStepUp(RealmModel realm, UserModel user, Map<String, String> config){
+        if (!config.containsKey(REQUIRES_STEP_UP)) { //If user requires step up not explicitly set, forcing OTP
+            return ABSTAIN;
+        }
+        if(config.containsValue(NO)){ //If the users config specifies they never have to step up (e.g admin)
+            return SKIP_OTP;
+        }
+        if((userHasRole(realm, user, StepUpRoles.USER.getRole()) && config.get(REQUIRES_STEP_UP).equals(YES))){//If the user has the 'user' and requires a OTP to become secured
+            return SHOW_OTP;
+        }
+        if((userHasRole(realm, user, StepUpRoles.SECURED.getRole()))){//If the user has the secured role already then skip OTP, this can be changed any which way though
+            return SKIP_OTP;
+        }
+        return ABSTAIN;
+    }
+
     private boolean userHasRole(RealmModel realm, UserModel user, String roleName) {
 
         if (roleName == null) {
@@ -285,7 +321,9 @@ public class ConditionalOtpFormAuthenticator extends OTPFormAuthenticator {
     private boolean isOTPRequired(KeycloakSession session, RealmModel realm, UserModel user) {
         MultivaluedMap<String, String> requestHeaders = session.getContext().getRequestHeaders().getRequestHeaders();
         for (AuthenticatorConfigModel configModel : realm.getAuthenticatorConfigs()) {
-
+            if(tryConcludeBasedOn(voteForStepUp(realm, user, configModel.getConfig()))){ //If step up is required or not
+                return true;
+            }
             if (tryConcludeBasedOn(voteForUserOtpControlAttribute(user, configModel.getConfig()))) {
                 return true;
             }
@@ -301,11 +339,12 @@ public class ConditionalOtpFormAuthenticator extends OTPFormAuthenticator {
                 return true;
             }
             if (containsConditionalOtpConfig(configModel.getConfig())
-                && voteForUserOtpControlAttribute(user, configModel.getConfig()) == ABSTAIN
-                && voteForUserRole(realm, user, configModel.getConfig()) == ABSTAIN
-                && voteForHttpHeaderMatchesPattern(requestHeaders, configModel.getConfig()) == ABSTAIN
-                && (voteForDefaultFallback(configModel.getConfig()) == SHOW_OTP
-                    || voteForDefaultFallback(configModel.getConfig()) == ABSTAIN)) {
+                    && voteForUserOtpControlAttribute(user, configModel.getConfig()) == ABSTAIN
+                    && voteForUserRole(realm, user, configModel.getConfig()) == ABSTAIN
+                    && voteForHttpHeaderMatchesPattern(requestHeaders, configModel.getConfig()) == ABSTAIN
+                    && voteForStepUp(realm, user, configModel.getConfig()) == ABSTAIN //additionally
+                    && (voteForDefaultFallback(configModel.getConfig()) == SHOW_OTP
+                        || voteForDefaultFallback(configModel.getConfig()) == ABSTAIN)) {
                 return true;
             }
         }
@@ -314,11 +353,12 @@ public class ConditionalOtpFormAuthenticator extends OTPFormAuthenticator {
 
     private boolean containsConditionalOtpConfig(Map config) {
         return config.containsKey(OTP_CONTROL_USER_ATTRIBUTE)
-            || config.containsKey(SKIP_OTP_ROLE)
-            || config.containsKey(FORCE_OTP_ROLE)
-            || config.containsKey(SKIP_OTP_FOR_HTTP_HEADER)
-            || config.containsKey(FORCE_OTP_FOR_HTTP_HEADER)
-            || config.containsKey(DEFAULT_OTP_OUTCOME);
+                || config.containsKey(SKIP_OTP_ROLE)
+                || config.containsKey(FORCE_OTP_ROLE)
+                || config.containsKey(SKIP_OTP_FOR_HTTP_HEADER)
+                || config.containsKey(FORCE_OTP_FOR_HTTP_HEADER)
+                || config.containsKey(DEFAULT_OTP_OUTCOME)
+                || config.containsKey(REQUIRES_STEP_UP);
     }
 
     @Override
