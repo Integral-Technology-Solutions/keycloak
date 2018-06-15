@@ -46,6 +46,7 @@ public abstract class AbstractAuthenticatedActionsValve extends ValveBase {
     protected AdapterDeploymentContext deploymentContext;
 
     public AbstractAuthenticatedActionsValve(AdapterDeploymentContext deploymentContext, Valve next, Container container) {
+        System.out.println("AbstractAuthenticatedActionsValve line 49");
         this.deploymentContext = deploymentContext;
         if (next == null) throw new RuntimeException("Next valve is null!!!");
         setNext(next);
@@ -54,6 +55,7 @@ public abstract class AbstractAuthenticatedActionsValve extends ValveBase {
 
     @Override
     public void invoke(Request request, Response response) throws IOException, ServletException {
+        System.out.println("invoke line 58");
         log.debugv("AuthenticatedActionsValve.invoke {0}", request.getRequestURI());
         CatalinaHttpFacade facade = new OIDCCatalinaHttpFacade(request, response);
         KeycloakDeployment deployment = deploymentContext.resolveDeployment(facade);

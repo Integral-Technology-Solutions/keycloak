@@ -193,6 +193,7 @@ public class JaxrsBearerTokenFilterImpl implements JaxrsBearerTokenFilter {
     }
 
     protected boolean handlePreauth(JaxrsHttpFacade facade) {
+        System.out.println("handlePreauth JaxrsBearerTokenFilterImpl");
         PreAuthActionsHandler handler = new PreAuthActionsHandler(userSessionManagement, deploymentContext, facade);
         if (handler.handleRequest()) {
             // Send response now (if not already sent)
@@ -201,6 +202,7 @@ public class JaxrsBearerTokenFilterImpl implements JaxrsBearerTokenFilter {
             }
             return true;
         }
+        System.out.println("jaxrs handle req line 205");
 
         return false;
     }

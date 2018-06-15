@@ -34,11 +34,13 @@ public class AdapterRSATokenVerifier {
     private static final Logger log = Logger.getLogger(AdapterRSATokenVerifier.class);
 
     public static AccessToken verifyToken(String tokenString, KeycloakDeployment deployment) throws VerificationException {
+        log.debug("AdapterRSATokenVerifier verifyToken");
         return verifyToken(tokenString, deployment, true, true);
     }
 
 
     public static PublicKey getPublicKey(String kid, KeycloakDeployment deployment) throws VerificationException {
+        log.debug("AdapterRSATokenVerifier getPublicKey");
         PublicKeyLocator pkLocator = deployment.getPublicKeyLocator();
 
         PublicKey publicKey = pkLocator.getPublicKey(kid, deployment);
@@ -51,6 +53,7 @@ public class AdapterRSATokenVerifier {
     }
 
     public static AccessToken verifyToken(String tokenString, KeycloakDeployment deployment, boolean checkActive, boolean checkTokenType) throws VerificationException {
+        log.debug("AccessToken verifyToken");
         RSATokenVerifier verifier = RSATokenVerifier.create(tokenString).realmUrl(deployment.getRealmInfoUrl()).checkActive(checkActive).checkTokenType(checkTokenType);
         PublicKey publicKey = getPublicKey(verifier.getHeader().getKeyId(), deployment);
         return verifier.publicKey(publicKey).verify().getToken();

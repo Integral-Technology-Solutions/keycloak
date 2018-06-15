@@ -32,6 +32,7 @@ public class KeycloakSecurityContextClientRequestInterceptor implements ClientHt
      * @return the current <code>KeycloakSecurityContext</code>
      */
     protected KeycloakSecurityContext getKeycloakSecurityContext() {
+        System.out.println("KeycloakSecurityContext getKeycloakSecurityContext");
         ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
         Principal principal = attributes.getRequest().getUserPrincipal();
         if (principal == null) {
@@ -48,6 +49,7 @@ public class KeycloakSecurityContextClientRequestInterceptor implements ClientHt
 
     @Override
     public ClientHttpResponse intercept(HttpRequest httpRequest, byte[] bytes, ClientHttpRequestExecution clientHttpRequestExecution) throws IOException {
+        System.out.println("ClientHttpResponse intercept");
         KeycloakSecurityContext context = this.getKeycloakSecurityContext();
         httpRequest.getHeaders().set(AUTHORIZATION_HEADER, "Bearer " + context.getTokenString());
         return clientHttpRequestExecution.execute(httpRequest, bytes);

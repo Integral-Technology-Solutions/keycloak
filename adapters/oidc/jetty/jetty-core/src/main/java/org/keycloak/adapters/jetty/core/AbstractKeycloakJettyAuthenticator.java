@@ -282,6 +282,7 @@ public abstract class AbstractKeycloakJettyAuthenticator extends LoginAuthentica
         if (log.isTraceEnabled()) {
             log.trace("*** authenticate");
         }
+        System.out.println("Validate request jetty.core");
         Request request = resolveRequest(req);
         OIDCJettyHttpFacade facade = new OIDCJettyHttpFacade(request, (HttpServletResponse) res);
         KeycloakDeployment deployment = deploymentContext.resolveDeployment(facade);
@@ -290,9 +291,11 @@ public abstract class AbstractKeycloakJettyAuthenticator extends LoginAuthentica
             return Authentication.UNAUTHENTICATED;
         }
         PreAuthActionsHandler handler = new PreAuthActionsHandler(createSessionManagement(request), deploymentContext, facade);
+        System.out.println("line 293 AbstractKeycloakJettyAuthenticator");
         if (handler.handleRequest()) {
             return Authentication.SEND_SUCCESS;
         }
+        System.out.println("jetty core line 297");
         if (!mandatory)
             return new DeferredAuthentication(this);
         AdapterTokenStore tokenStore = getTokenStore(request, facade, deployment);
@@ -301,6 +304,7 @@ public abstract class AbstractKeycloakJettyAuthenticator extends LoginAuthentica
         tokenStore.checkCurrentToken();
         JettyRequestAuthenticator authenticator = createRequestAuthenticator(request, facade, deployment, tokenStore);
         AuthOutcome outcome = authenticator.authenticate();
+        System.out.println("AbstractKeycloakJettyAuthenticator line 304");
         if (outcome == AuthOutcome.AUTHENTICATED) {
             if (facade.isEnded()) {
                 return Authentication.SEND_SUCCESS;

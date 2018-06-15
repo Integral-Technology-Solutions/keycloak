@@ -36,6 +36,7 @@ import org.apache.http.impl.conn.SingleClientConnManager;
 import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
 import org.apache.http.params.BasicHttpParams;
 import org.apache.http.params.HttpConnectionParams;
+import org.jboss.logging.Logger;
 import org.keycloak.common.util.EnvUtil;
 import org.keycloak.common.util.KeystoreUtil;
 import org.keycloak.representations.adapters.config.AdapterHttpClientConfig;
@@ -88,6 +89,7 @@ public class HttpClientBuilder {
      * @version $Revision: 1 $
      */
     private static class PassthroughTrustManager implements X509TrustManager {
+
         public void checkClientTrusted(X509Certificate[] chain,
                                        String authType) throws CertificateException {
         }
@@ -236,11 +238,13 @@ public class HttpClientBuilder {
 
         @Override
         public boolean verify(String s, SSLSession sslSession) {
+            System.out.println("Verify HttpClientBuilder");
             return verifier.verify(s, sslSession);
         }
     }
 
     public HttpClient build() {
+        System.out.println("Building HTTP HttpClientBuilder");
         X509HostnameVerifier verifier = null;
         if (this.verifier != null) verifier = new VerifierWrapper(this.verifier);
         else {

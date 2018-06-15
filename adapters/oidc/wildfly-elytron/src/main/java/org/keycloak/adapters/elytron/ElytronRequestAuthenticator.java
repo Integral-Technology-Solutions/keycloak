@@ -42,7 +42,7 @@ public class ElytronRequestAuthenticator extends RequestAuthenticator {
     @Override
     public AuthOutcome authenticate() {
         AuthOutcome authenticate = super.authenticate();
-
+        System.out.println("ElytronRequestAuthenticator line 45");
         if (AuthOutcome.AUTHENTICATED.equals(authenticate)) {
             if (!getElytronHttpFacade().isAuthorized()) {
                 return AuthOutcome.FAILED;

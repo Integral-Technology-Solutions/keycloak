@@ -52,8 +52,9 @@ public class KeycloakAdapterPolicyEnforcer extends AbstractPolicyEnforcer {
 
     @Override
     protected boolean isAuthorized(PathConfig pathConfig, PolicyEnforcerConfig.MethodConfig methodConfig, AccessToken accessToken, OIDCHttpFacade httpFacade) {
+        System.out.println("KeycloakAdapterPolicyEnforcer isAuthorized");
         AccessToken original = accessToken;
-
+        LOGGER.debug("isAuthorized KeycloakAdapterPolicyEnforcer");
         if (super.isAuthorized(pathConfig, methodConfig, accessToken, httpFacade)) {
             return true;
         }
@@ -84,19 +85,24 @@ public class KeycloakAdapterPolicyEnforcer extends AbstractPolicyEnforcer {
 
     @Override
     protected boolean challenge(PathConfig pathConfig, PolicyEnforcerConfig.MethodConfig methodConfig, OIDCHttpFacade facade) {
+        LOGGER.debug("challenge KeycloakAdapterPolicyEnforcer");
         handleAccessDenied(facade);
         return true;
     }
 
     @Override
     protected void handleAccessDenied(OIDCHttpFacade facade) {
+        System.out.println("KeycloakAdapterPolicyEnforcer handleAccessDenied");
+        LOGGER.debug("handleAccessDenied KeycloakAdapterPolicyEnforcer");
         String accessDeniedPath = getEnforcerConfig().getOnDenyRedirectTo();
         HttpFacade.Response response = facade.getResponse();
 
         if (accessDeniedPath != null) {
+            System.out.println("KeycloakAdapterPolicyEnforcer accessDeniedPath");
             response.setStatus(302);
             response.setHeader("Location", accessDeniedPath);
         } else {
+            System.out.println("Does this give me the 403");
             response.sendError(403);
         }
     }

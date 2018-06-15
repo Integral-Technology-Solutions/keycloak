@@ -108,18 +108,27 @@ public abstract class AbstractUndertowKeycloakAuthMech implements Authentication
      */
     protected AuthenticationMechanismOutcome keycloakAuthenticate(HttpServerExchange exchange, SecurityContext securityContext, RequestAuthenticator authenticator) {
         AuthOutcome outcome = authenticator.authenticate();
+        System.out.println("Line 111 AbstractUndertowKCAuth");
         if (outcome == AuthOutcome.AUTHENTICATED) {
+            System.out.println("Line 113 AbstractUndertowKCAuth");
+
             registerNotifications(securityContext);
             return AuthenticationMechanismOutcome.AUTHENTICATED;
         }
         AuthChallenge challenge = authenticator.getChallenge();
         if (challenge != null) {
+            System.out.println("Line 120 AbstractUndertowKCAuth");
+
             exchange.putAttachment(KEYCLOAK_CHALLENGE_ATTACHMENT_KEY, challenge);
         }
 
         if (outcome == AuthOutcome.FAILED) {
+            System.out.println("Line 126 AbstractUndertowKCAuth");
+
             return AuthenticationMechanismOutcome.NOT_AUTHENTICATED;
         }
+        System.out.println("Line 130 AbstractUndertowKCAuth");
+
         return AuthenticationMechanismOutcome.NOT_ATTEMPTED;
     }
 

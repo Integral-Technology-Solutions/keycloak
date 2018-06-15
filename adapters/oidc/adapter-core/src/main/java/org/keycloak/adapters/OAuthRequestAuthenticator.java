@@ -213,6 +213,7 @@ public class OAuthRequestAuthenticator {
         final String state = getStateCode();
         final String redirect =  getRedirectUri(state);
         if (redirect == null) {
+            System.out.println("loginRedirect OAuthRequestAuth");
             return challenge(403, OIDCAuthenticationError.Reason.NO_REDIRECT_URI, null);
         }
         return new AuthChallenge() {
@@ -235,6 +236,7 @@ public class OAuthRequestAuthenticator {
     }
 
     protected AuthChallenge checkStateCookie() {
+        System.out.println("checkStateCookie OAuthRequestAuth");
         OIDCHttpFacade.Cookie stateCookie = getCookie(deployment.getStateCookieName());
 
         if (stateCookie == null) {
@@ -262,6 +264,7 @@ public class OAuthRequestAuthenticator {
     }
 
     public AuthOutcome authenticate() {
+        System.out.println("AuthOutcome authenticate");
         String code = getCode();
         if (code == null) {
             log.debug("there was no code");
@@ -297,6 +300,7 @@ public class OAuthRequestAuthenticator {
             @Override
             public boolean challenge(HttpFacade exchange) {
                 OIDCAuthenticationError error = new OIDCAuthenticationError(reason, description);
+                System.out.println("Challenge sending 403 OAuthRequestAuthenticator AuthChallenge");
                 exchange.getRequest().setError(error);
                 exchange.getResponse().sendError(code);
                 return true;

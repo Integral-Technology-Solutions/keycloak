@@ -50,6 +50,7 @@ public class FilterRequestAuthenticator extends RequestAuthenticator {
                                       HttpServletRequest request,
                                       int sslRedirectPort) {
         super(facade, deployment, tokenStore, sslRedirectPort);
+        System.out.println("line 53 FilterRequestAuthenticator");
         this.request = request;
     }
 

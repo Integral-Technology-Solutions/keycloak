@@ -64,6 +64,7 @@ public abstract class AbstractKeycloakAuthenticatorValve extends FormAuthenticat
 
     @Override
     public void lifecycleEvent(LifecycleEvent event) {
+        System.out.println("Line 67 AhbstractKeyCloakAuthenticatorValve");
         if (Lifecycle.START_EVENT.equals(event.getType())) {
             cache = false;
         } else if (Lifecycle.AFTER_START_EVENT.equals(event.getType())) {
@@ -90,6 +91,7 @@ public abstract class AbstractKeycloakAuthenticatorValve extends FormAuthenticat
     }
 
     protected void beforeStop() {
+        System.out.println("Line 93 AhbstractKeyCloakAuthenticatorValve");
         if (nodesRegistrationManagement != null) {
             nodesRegistrationManagement.stop();
         }
@@ -170,15 +172,25 @@ public abstract class AbstractKeycloakAuthenticatorValve extends FormAuthenticat
     @Override
     public void invoke(Request request, Response response) throws IOException, ServletException {
         try {
+            System.out.println("Line 173 AhbstractKeyCloakAuthenticatorValve");
             CatalinaHttpFacade facade = new OIDCCatalinaHttpFacade(request, response);
+            System.out.println("Line 175 AhbstractKeyCloakAuthenticatorValve");
             Manager sessionManager = request.getContext().getManager();
+            System.out.println("Line 177 AhbstractKeyCloakAuthenticatorValve");
             CatalinaUserSessionManagementWrapper sessionManagementWrapper = new CatalinaUserSessionManagementWrapper(userSessionManagement, sessionManager);
+            System.out.println("Line 179 AhbstractKeyCloakAuthenticatorValve");
             PreAuthActionsHandler handler = new PreAuthActionsHandler(sessionManagementWrapper, deploymentContext, facade);
             if (handler.handleRequest()) {
+                System.out.println("Line 179 AhbstractKeyCloakAuthenticatorValve");
                 return;
             }
+            System.out.println("CheckKeyCloakSession");
             checkKeycloakSession(request, facade);
             super.invoke(request, response);
+            if (response!=null) {
+                int responseCode = response.getStatus();
+                System.out.println("Response returned from invoke " + responseCode);
+            }
         } finally {
         }
     }
@@ -188,9 +200,11 @@ public abstract class AbstractKeycloakAuthenticatorValve extends FormAuthenticat
     protected abstract AbstractAuthenticatedActionsValve createAuthenticatedActionsValve(AdapterDeploymentContext deploymentContext, Valve next, Container container);
 
     protected boolean authenticateInternal(Request request, HttpServletResponse response, Object loginConfig) throws IOException {
+        System.out.println("Line 191 AhbstractKeyCloakAuthenticatorValve");
         CatalinaHttpFacade facade = new OIDCCatalinaHttpFacade(request, response);
         KeycloakDeployment deployment = deploymentContext.resolveDeployment(facade);
         if (deployment == null || !deployment.isConfigured()) {
+            System.out.println("Line 195 AhbstractKeyCloakAuthenticatorValve");
             //needed for the EAP6/AS7 adapter relying on the tomcat core adapter
             facade.getResponse().sendError(401);
             return false;
@@ -201,16 +215,22 @@ public abstract class AbstractKeycloakAuthenticatorValve extends FormAuthenticat
 
         CatalinaRequestAuthenticator authenticator = createRequestAuthenticator(request, facade, deployment, tokenStore);
         AuthOutcome outcome = authenticator.authenticate();
+        System.out.println("Line 204 AbstractKeycloakAuthValve");
         if (outcome == AuthOutcome.AUTHENTICATED) {
             if (facade.isEnded()) {
+                System.out.println("Line 207 AbstractKeycloakAuthValve");
                 return false;
             }
+            System.out.println("Line 210 AbstractKeycloakAuthValve");
             return true;
         }
+        System.out.println("Line 213 AbstractKeycloakAuthValve");
         AuthChallenge challenge = authenticator.getChallenge();
         if (challenge != null) {
+            System.out.println("Line 216 AbstractKeycloakAuthValve");
             challenge.challenge(facade);
         }
+        System.out.println("Line 219 AbstractKeycloakAuthValve");
         return false;
     }
 
@@ -224,16 +244,21 @@ public abstract class AbstractKeycloakAuthenticatorValve extends FormAuthenticat
      * @param request
      */
     protected void checkKeycloakSession(Request request, HttpFacade facade) {
+        System.out.println("Line 240 AhbstractKeyCloakAuthenticatorValve");
         KeycloakDeployment deployment = deploymentContext.resolveDeployment(facade);
+        System.out.println("Line 242 AhbstractKeyCloakAuthenticatorValve");
         AdapterTokenStore tokenStore = getTokenStore(request, facade, deployment);
+        System.out.println("Line 244 AhbstractKeyCloakAuthenticatorValve");
         tokenStore.checkCurrentToken();
     }
 
     public void keycloakSaveRequest(Request request) throws IOException {
+        System.out.println("Line 249 AhbstractKeyCloakAuthenticatorValve");
         saveRequest(request, request.getSessionInternal(true));
     }
 
     public boolean keycloakRestoreRequest(Request request) {
+        System.out.println("Line 254 AhbstractKeyCloakAuthenticatorValve");
         try {
             return restoreRequest(request, request.getSessionInternal());
         } catch (IOException e) {
@@ -242,6 +267,7 @@ public abstract class AbstractKeycloakAuthenticatorValve extends FormAuthenticat
     }
 
     protected AdapterTokenStore getTokenStore(Request request, HttpFacade facade, KeycloakDeployment resolvedDeployment) {
+        System.out.println("Line 263 AhbstractKeyCloakAuthenticatorValve");
         AdapterTokenStore store = (AdapterTokenStore)request.getNote(TOKEN_STORE_NOTE);
         if (store != null) {
             return store;

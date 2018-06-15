@@ -74,31 +74,53 @@ public class PreAuthActionsHandler {
     }
 
     public boolean handleRequest() {
+        System.out.println("handleRequest PreAuthActions");
         String requestUri = facade.getRequest().getURI();
         log.debugv("adminRequest {0}", requestUri);
         if (preflightCors()) {
             return true;
         }
         if (requestUri.endsWith(AdapterConstants.K_LOGOUT)) {
-            if (!resolveDeployment()) return true;
+            System.out.println("requestUri.endsWith(AdapterConstants.K_LOGOUT");
+            if (!resolveDeployment()) {
+                System.out.println("!resolveDeployment()");
+                return true;
+            }
+            System.out.println("PreAuthActions");
             handleLogout();
             return true;
         } else if (requestUri.endsWith(AdapterConstants.K_PUSH_NOT_BEFORE)) {
-            if (!resolveDeployment()) return true;
+            System.out.println("requestUri.endsWith(AdapterConstants.K_PUSH_NOT_BEFORE");
+            if (!resolveDeployment()) {
+                System.out.println("PreAuth 95");
+                return true;
+            }
             handlePushNotBefore();
             return true;
         } else if (requestUri.endsWith(AdapterConstants.K_VERSION)) {
+            System.out.println("PreAuth 101");
             handleVersion();
             return true;
         } else if (requestUri.endsWith(AdapterConstants.K_TEST_AVAILABLE)) {
-            if (!resolveDeployment()) return true;
+            System.out.println("PreAuth 106");
+            if (!resolveDeployment()) {
+                System.out.println("PreAuth 107");
+                return true;
+            }
+            System.out.println("PreAuth 110");
             handleTestAvailable();
             return true;
         } else if (requestUri.endsWith(AdapterConstants.K_JWKS)) {
-            if (!resolveDeployment()) return true;
+            System.out.println("PreAuth 114");
+            if (!resolveDeployment()){
+                System.out.println("PreAuth 116");
+                return true;
+            }
+            System.out.println("PreAuth 119");
             handleJwksRequest();
             return true;
         }
+        System.out.println("PreAuth 124 returning false");
         return false;
     }
 
@@ -140,6 +162,7 @@ public class PreAuthActionsHandler {
     }
 
     protected void handleLogout()  {
+        System.out.println("handle logout PreAuth 165");
         if (log.isTraceEnabled()) {
             log.trace("K_LOGOUT sent");
         }
@@ -167,6 +190,7 @@ public class PreAuthActionsHandler {
 
 
     protected void handlePushNotBefore()  {
+        System.out.println("handlePushBefore");
         if (log.isTraceEnabled()) {
             log.trace("K_PUSH_NOT_BEFORE sent");
         }
@@ -184,6 +208,7 @@ public class PreAuthActionsHandler {
     }
 
     protected void handleTestAvailable()  {
+        System.out.println("handleTestAvailable");
         if (log.isTraceEnabled()) {
             log.trace("K_TEST_AVAILABLE sent");
         }
@@ -200,6 +225,7 @@ public class PreAuthActionsHandler {
     }
 
     protected JWSInput verifyAdminRequest() throws Exception {
+        System.out.println("verifyAdminRequest");
         if (!facade.getRequest().isSecure() && deployment.getSslRequired().isRequired(facade.getRequest().getRemoteAddr())) {
             log.warn("SSL is required for adapter admin action");
             facade.getResponse().sendError(403, "ssl required");
@@ -207,6 +233,7 @@ public class PreAuthActionsHandler {
         }
         String token = StreamUtil.readString(facade.getRequest().getInputStream());
         if (token == null) {
+            System.out.println("Verify Admin Request no token");
             log.warn("admin request failed, no token");
             facade.getResponse().sendError(403, "no token");
             return null;
@@ -221,7 +248,7 @@ public class PreAuthActionsHandler {
         } catch (JWSInputException ignore) {
         }
 
-        log.warn("admin request failed, unable to verify token");
+        System.out.println("line 251 admin request failed, unable to verify token");
         facade.getResponse().sendError(403, "no token");
         return null;
     }

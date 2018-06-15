@@ -66,6 +66,7 @@ public class ServletPreAuthActionsHandler implements HttpHandler {
         SessionManagementBridge bridge = new SessionManagementBridge(userSessionManagement, servletRequestContext.getDeployment().getSessionManager());
         PreAuthActionsHandler handler = new PreAuthActionsHandler(bridge, deploymentContext, facade);
         if (handler.handleRequest()) return;
+        System.out.println("undertow, 69");
         next.handleRequest(exchange);
     }
 

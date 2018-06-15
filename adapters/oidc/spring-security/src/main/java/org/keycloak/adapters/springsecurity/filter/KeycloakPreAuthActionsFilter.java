@@ -75,12 +75,13 @@ public class KeycloakPreAuthActionsFilter extends GenericFilterBean implements A
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {
-
+        System.out.println("KeycloakPreAUthActionsFilter 78");
         HttpFacade facade = new SimpleHttpFacade((HttpServletRequest)request, (HttpServletResponse)response);
         PreAuthActionsHandler handler = new PreAuthActionsHandler(userSessionManagement, deploymentContext, facade);
         if (handler.handleRequest()) {
             log.debug("Pre-auth filter handled request: {}", ((HttpServletRequest) request).getRequestURI());
         } else {
+            System.out.println("doFilter Keycloak pre auth actions filter");
             chain.doFilter(request, response);
         }
     }

@@ -213,6 +213,7 @@ public class CatalinaHttpFacade implements HttpFacade {
 
         @Override
         public void sendError(int code) {
+            System.out.println("sendError line 216 CatalinaHttpFacade");
             try {
                 response.sendError(code);
             } catch (IOException e) {
@@ -222,6 +223,7 @@ public class CatalinaHttpFacade implements HttpFacade {
 
         @Override
         public void sendError(int code, String message) {
+            System.out.println("sendError line 226 CatalinaHttpFacade");
             try {
                 response.sendError(code, message);
             } catch (IOException e) {

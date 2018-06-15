@@ -50,64 +50,87 @@ public class KeycloakSecurityContextRequestFilter extends GenericFilterBean impl
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain filterChain) throws IOException, ServletException {
         if (request.getAttribute(FILTER_APPLIED) != null) {
+            System.out.println("KeycloakSecurityContext line 53 doFilter");
             filterChain.doFilter(request, response);
             return;
         }
 
         request.setAttribute(FILTER_APPLIED, Boolean.TRUE);
+        System.out.println("KeycloakSecurityContext line 59 filterApplied");
 
         KeycloakSecurityContext keycloakSecurityContext = getKeycloakPrincipal();
 
         if (keycloakSecurityContext instanceof RefreshableKeycloakSecurityContext) {
+            System.out.println("KeycloakSecurityContext line 64");
             RefreshableKeycloakSecurityContext refreshableSecurityContext = (RefreshableKeycloakSecurityContext) keycloakSecurityContext;
 
             if (refreshableSecurityContext.isActive()) {
+                System.out.println("KeycloakSecurityContext line 68");
                 KeycloakDeployment deployment = resolveDeployment(request, response);
 
                 if (deployment.isAlwaysRefreshToken()) {
+                    System.out.println("KeycloakSecurityContext line 72");
                     if (refreshableSecurityContext.refreshExpiredToken(false)) {
+                        System.out.println("KeycloakSecurityContext line 75");
                         request.setAttribute(KeycloakSecurityContext.class.getName(), refreshableSecurityContext);
                     } else {
+                        System.out.println("KeycloakSecurityContext line 77");
                         clearAuthenticationContext();
                     }
                 }
             } else {
+                System.out.println("KeycloakSecurityContext line 82");
                 clearAuthenticationContext();
             }
         }
-
+        System.out.println("KeycloakSecurityContext line 86");
         filterChain.doFilter(request, response);
     }
 
     @Override
     protected void initFilterBean() throws ServletException {
+        System.out.println("KeycloakSecurityContext line 92");
         deploymentContext = applicationContext.getBean(AdapterDeploymentContext.class);
     }
 
     @Override
     public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+        System.out.println("KeycloakSecurityContext line 98");
+
         this.applicationContext = applicationContext;
     }
 
     private KeycloakSecurityContext getKeycloakPrincipal() {
+        System.out.println("KeycloakSecurityContext line 104");
+
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         if (authentication != null) {
+            System.out.println("KeycloakSecurityContext line 109");
+
             Object principal = authentication.getPrincipal();
 
             if (principal instanceof KeycloakPrincipal) {
+                System.out.println("KeycloakSecurityContext line 115");
+
                 return KeycloakPrincipal.class.cast(principal).getKeycloakSecurityContext();
             }
         }
+        System.out.println("KeycloakSecurityContext line 119");
 
         return null;
     }
 
     private KeycloakDeployment resolveDeployment(ServletRequest servletRequest, ServletResponse servletResponse) {
+        System.out.println("KeycloakSecurityContext line 125");
+
         return deploymentContext.resolveDeployment(new SimpleHttpFacade(HttpServletRequest.class.cast(servletRequest), HttpServletResponse.class.cast(servletResponse)));
     }
 
     private void clearAuthenticationContext() {
+        System.out.println("KeycloakSecurityContext line 131");
+
+
         SecurityContextHolder.clearContext();
     }
 }

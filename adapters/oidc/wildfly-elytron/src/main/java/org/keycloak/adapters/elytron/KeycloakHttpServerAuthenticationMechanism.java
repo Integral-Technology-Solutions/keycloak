@@ -94,11 +94,15 @@ class KeycloakHttpServerAuthenticationMechanism implements HttpServerAuthenticat
         }
 
         AuthOutcome outcome = authenticator.authenticate();
+        System.out.println("/Users/danielhuffer/Desktop/VIRGIN_KEYCLOAK/adapters/oidc/wildfly-elytron/src/main/java/org/keycloak/adapters/elytron/KeycloakHttpServerAuthenticationMechanism.java");
+
 
         if (AuthOutcome.AUTHENTICATED.equals(outcome)) {
+            System.out.println("KeycloakHttpServerAuthenticationMechanism line 101");
             if (new AuthenticatedActionsHandler(deployment, httpFacade).handledRequest()) {
                 httpFacade.authenticationInProgress();
             } else {
+                System.out.println("KeycloakHttpServerAuthenticationMechanism line 105");
                 httpFacade.authenticationComplete();
             }
             return;
@@ -112,6 +116,7 @@ class KeycloakHttpServerAuthenticationMechanism implements HttpServerAuthenticat
         }
 
         if (AuthOutcome.FAILED.equals(outcome)) {
+            System.out.println("KeycloakHttpServerAuthenticationMechanism line 119");
             httpFacade.getResponse().setStatus(403);
             httpFacade.authenticationFailed();
             return;

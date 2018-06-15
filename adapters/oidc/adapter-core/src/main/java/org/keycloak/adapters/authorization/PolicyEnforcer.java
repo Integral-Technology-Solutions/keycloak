@@ -76,6 +76,7 @@ public class PolicyEnforcer {
     }
 
     public AuthorizationContext enforce(OIDCHttpFacade facade) {
+        System.out.println("enforcing policy Policy enforcer line 79");
         if (LOGGER.isDebugEnabled()) {
             LOGGER.debugv("Policy enforcement is enable. Enforcing policy decisions for path [{0}].", facade.getRequest().getURI());
         }

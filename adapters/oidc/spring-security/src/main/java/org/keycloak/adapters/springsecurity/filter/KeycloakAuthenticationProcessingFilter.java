@@ -146,10 +146,13 @@ public class KeycloakAuthenticationProcessingFilter extends AbstractAuthenticati
 
         AuthOutcome result = authenticator.authenticate();
         log.debug("Auth outcome: {}", result);
-
+        System.out.println("KeycloakAuthenticationProcessingFilter line 149");
         if (AuthOutcome.FAILED.equals(result)) {
+            System.out.println("KeycloakAuthenticationProcessingFilter line 151");
             AuthChallenge challenge = authenticator.getChallenge();
             if (challenge != null) {
+                System.out.println("KeycloakAuthenticationProcessingFilter line 154");
+
                 challenge.challenge(facade);
             }
             throw new KeycloakAuthenticationException("Invalid authorization header, see WWW-Authenticate header for details");
@@ -169,14 +172,17 @@ public class KeycloakAuthenticationProcessingFilter extends AbstractAuthenticati
             }
         }
 
-        else if (AuthOutcome.AUTHENTICATED.equals(result)) {
+        else if (AuthOutcome.AUTHENTICATED.equals(result)) { //TODO: if not above maybe here
+            System.out.println("Line 175 KeycloakAuthenticationProcessingFilter");
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
             Assert.notNull(authentication, "Authentication SecurityContextHolder was null");
             return authenticationManager.authenticate(authentication);
         }
         else {
+            System.out.println("Line 181 KeycloakAuthenticationProcessingFilter");
             AuthChallenge challenge = authenticator.getChallenge();
             if (challenge != null) {
+                System.out.println("Line 185 KeycloakAuthenticationProcessingFilter");
                 challenge.challenge(facade);
             }
             return null;

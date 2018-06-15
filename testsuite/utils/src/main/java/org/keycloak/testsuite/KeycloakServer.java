@@ -421,6 +421,7 @@ public class KeycloakServer {
                     + (config.getPortHttps() > 0 ? ", https://" + config.getHost() + ":" + config.getPortHttps()+ "/auth" : "")
                     + ") in "
                     + (System.currentTimeMillis() - start) + " ms\n");
+            info("Keycloak admin console http://" + config.getHost() + ":" + config.getPort() + "/auth/admin/master/console/");
         } catch (RuntimeException e) {
             server.stop();
             throw e;

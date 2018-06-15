@@ -144,10 +144,12 @@ public class KeycloakOIDCFilter implements Filter {
     @Override
     public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain) throws IOException, ServletException {
         log.fine("Keycloak OIDC Filter");
+        System.out.println("Keycloak OIDC Filter");
         HttpServletRequest request = (HttpServletRequest) req;
         HttpServletResponse response = (HttpServletResponse) res;
 
         if (shouldSkip(request)) {
+            System.out.println("Should skip doing chain.filter line 152 KCOIDCFILTER");
             chain.doFilter(req, res);
             return;
         }
@@ -181,11 +183,12 @@ public class KeycloakOIDCFilter implements Filter {
         }, deploymentContext, facade);
 
         if (preActions.handleRequest()) {
+            System.out.println("line 186 oidc filter");
             //System.err.println("**************** preActions.handleRequest happened!");
             return;
         }
 
-
+        System.out.println();
         nodesRegistrationManagement.tryRegister(deployment);
         OIDCFilterSessionStore tokenStore = new OIDCFilterSessionStore(request, facade, 100000, deployment, idMapper);
         tokenStore.checkCurrentToken();
@@ -193,26 +196,36 @@ public class KeycloakOIDCFilter implements Filter {
 
         FilterRequestAuthenticator authenticator = new FilterRequestAuthenticator(deployment, tokenStore, facade, request, 8443);
         AuthOutcome outcome = authenticator.authenticate();
+        System.out.println("Line 196 KeycloakOIDCFilter");
         if (outcome == AuthOutcome.AUTHENTICATED) {
             log.fine("AUTHENTICATED");
             if (facade.isEnded()) {
+                System.out.println("Line 200 Facade ended KeycloakOIDCFilter");
                 return;
             }
             AuthenticatedActionsHandler actions = new AuthenticatedActionsHandler(deployment, facade);
             if (actions.handledRequest()) {
+                System.out.println("Line 205 handle request KeycloakOIDCFilter");
+
                 return;
             } else {
                 HttpServletRequestWrapper wrapper = tokenStore.buildWrapper();
+                System.out.println("Line 210 KeycloakOIDCFilter HttpServletRequestWrapper KeycloakOIDCFilter");
+                System.out.println("Doing filter");
                 chain.doFilter(wrapper, res);
                 return;
             }
         }
         AuthChallenge challenge = authenticator.getChallenge();
         if (challenge != null) {
+            System.out.println("KeycloakOIDCFilter challenge != null");
+
             log.fine("challenge");
             challenge.challenge(facade);
             return;
         }
+        System.out.println("KeycloakOIDCFilter return 403");
+
         response.sendError(403);
 
     }

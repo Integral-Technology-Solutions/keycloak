@@ -34,9 +34,11 @@ public class HttpAdapterUtils {
 
     public static <T> T sendJsonHttpRequest(KeycloakDeployment deployment, HttpRequestBase httpRequest, Class<T> clazz) throws HttpClientAdapterException {
         try {
+            System.out.println("sendJsonHttpRequest  HttpAdapterUtils");
             HttpResponse response = deployment.getClient().execute(httpRequest);
             int status = response.getStatusLine().getStatusCode();
             if (status != 200) {
+                System.out.println("Line 41 HttpAdapterUtils");
                 close(response);
                 throw new HttpClientAdapterException("Unexpected status = " + status);
             }
@@ -61,7 +63,8 @@ public class HttpAdapterUtils {
 
 
     private static void close(HttpResponse response) {
-        if (response.getEntity() != null) {
+        System.out.println("Line 65 HttpAdapterUtils");
+            if (response.getEntity() != null) {
             try {
                 response.getEntity().getContent().close();
             } catch (IOException e) {

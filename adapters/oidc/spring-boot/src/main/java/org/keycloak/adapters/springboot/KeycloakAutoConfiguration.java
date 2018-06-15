@@ -75,6 +75,8 @@ public class KeycloakAutoConfiguration {
 
     @Bean
     public EmbeddedServletContainerCustomizer getKeycloakContainerCustomizer() {
+        System.out.println("start up");
+
         return new EmbeddedServletContainerCustomizer() {
             @Override
             public void customize(ConfigurableEmbeddedServletContainer configurableEmbeddedServletContainer) {

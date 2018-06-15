@@ -59,12 +59,13 @@ public abstract class AbstractPolicyEnforcer {
     }
 
     public AuthorizationContext authorize(OIDCHttpFacade httpFacade) {
+        System.out.println("AbstractPolicyEnforcer line 62");
         EnforcementMode enforcementMode = this.enforcerConfig.getEnforcementMode();
 
         if (EnforcementMode.DISABLED.equals(enforcementMode)) {
             return createEmptyAuthorizationContext(true);
         }
-
+        System.out.println("AbstractPolicyEnforcer line 68");
         KeycloakSecurityContext securityContext = httpFacade.getSecurityContext();
 
         if (securityContext != null) {
@@ -74,8 +75,8 @@ public abstract class AbstractPolicyEnforcer {
                 Request request = httpFacade.getRequest();
                 String path = getPath(request);
                 PathConfig pathConfig = this.pathMatcher.matches(path, this.paths);
-
-                LOGGER.debugf("Checking permissions for path [%s] with config [%s].", request.getURI(), pathConfig);
+                System.out.println("AbstractPolicyEnforcer line 78");
+                System.out.printf("Checking permissions for path [%s] with config [%s].", request.getURI(), pathConfig);
 
                 if (pathConfig == null) {
                     if (EnforcementMode.PERMISSIVE.equals(enforcementMode)) {
@@ -87,7 +88,7 @@ public abstract class AbstractPolicyEnforcer {
                     if (isDefaultAccessDeniedUri(request, enforcerConfig)) {
                         return createAuthorizationContext(accessToken, null);
                     }
-
+                    System.out.println("handle acces denied line 91");
                     handleAccessDenied(httpFacade);
 
                     return createEmptyAuthorizationContext(false);
@@ -167,12 +168,13 @@ public abstract class AbstractPolicyEnforcer {
             return true;
         }
 
-        LOGGER.debugf("Authorization FAILED for path [%s]. Not enough permissions [%s].", actualPathConfig, permissions);
+        System.out.printf("Authorization FAILED for path [%s]. Not enough permissions [%s].", actualPathConfig, permissions);
 
         return false;
     }
 
     protected void handleAccessDenied(OIDCHttpFacade httpFacade) {
+        System.out.println("AbstractPolicyEnforcer line 177 send 403");
         httpFacade.getResponse().sendError(403);
     }
 
@@ -188,6 +190,7 @@ public abstract class AbstractPolicyEnforcer {
     }
 
     private boolean hasResourceScopePermission(MethodConfig methodConfig, Permission permission) {
+        System.out.println("Checking resource scope permission");
         List<String> requiredScopes = methodConfig.getScopes();
         Set<String> allowedScopes = permission.getScopes();
 
@@ -198,6 +201,7 @@ public abstract class AbstractPolicyEnforcer {
         PolicyEnforcerConfig.ScopeEnforcementMode enforcementMode = methodConfig.getScopesEnforcementMode();
 
         if (PolicyEnforcerConfig.ScopeEnforcementMode.ALL.equals(enforcementMode)) {
+            System.out.printf("All scopes ? %s", allowedScopes.containsAll(requiredScopes));
             return allowedScopes.containsAll(requiredScopes);
         }
 
