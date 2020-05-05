@@ -18,7 +18,7 @@
 package org.keycloak.services.resources.admin;
 
 import org.jboss.resteasy.annotations.cache.NoCache;
-import org.jboss.resteasy.spi.NotFoundException;
+import javax.ws.rs.NotFoundException;
 import org.keycloak.events.admin.OperationType;
 import org.keycloak.events.admin.ResourceType;
 import org.keycloak.models.ClientModel;
@@ -87,7 +87,7 @@ public class ScopeMappedClientResource {
         Set<RoleModel> mappings = KeycloakModelUtils.getClientScopeMappings(scopedClient, scopeContainer); //scopedClient.getClientScopeMappings(client);
         List<RoleRepresentation> mapRep = new ArrayList<RoleRepresentation>();
         for (RoleModel roleModel : mappings) {
-            mapRep.add(ModelToRepresentation.toRepresentation(roleModel));
+            mapRep.add(ModelToRepresentation.toBriefRepresentation(roleModel));
         }
         return mapRep;
     }
@@ -165,7 +165,7 @@ public class ScopeMappedClientResource {
 
             for (RoleModel roleModel : roleModels) {
                 scopeContainer.deleteScopeMapping(roleModel);
-                roles.add(ModelToRepresentation.toRepresentation(roleModel));
+                roles.add(ModelToRepresentation.toBriefRepresentation(roleModel));
             }
 
         } else {

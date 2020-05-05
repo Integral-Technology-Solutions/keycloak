@@ -16,11 +16,11 @@ import org.keycloak.models.UserSessionModel;
 import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.protocol.LoginProtocol;
 import org.keycloak.protocol.ProtocolMapper;
+import org.keycloak.protocol.ProtocolMapperUtils;
 import org.keycloak.protocol.docker.mapper.DockerAuthV2AttributeMapper;
 import org.keycloak.representations.docker.DockerResponse;
 import org.keycloak.representations.docker.DockerResponseToken;
 import org.keycloak.services.ErrorResponseException;
-import org.keycloak.services.managers.ClientSessionCode;
 import org.keycloak.sessions.AuthenticationSessionModel;
 import org.keycloak.util.TokenUtil;
 
@@ -30,7 +30,7 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriInfo;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.Set;
+import java.util.Map;
 
 public class DockerAuthV2Protocol implements LoginProtocol {
     protected static final Logger logger = Logger.getLogger(DockerEndpoint.class);
@@ -90,7 +90,7 @@ public class DockerAuthV2Protocol implements LoginProtocol {
     }
 
     @Override
-    public Response authenticated(final UserSessionModel userSession, final ClientSessionContext clientSessionCtx) {
+    public Response authenticated(final AuthenticationSessionModel authSession, final UserSessionModel userSession, final ClientSessionContext clientSessionCtx) {
         // First, create a base response token with realm + user values populated
         final AuthenticatedClientSessionModel clientSession = clientSessionCtx.getClientSession();
         final ClientModel client = clientSession.getClient();
@@ -98,7 +98,7 @@ public class DockerAuthV2Protocol implements LoginProtocol {
         DockerResponseToken responseToken = new DockerResponseToken()
                 .id(KeycloakModelUtils.generateId())
                 .type(TokenUtil.TOKEN_TYPE_BEARER)
-                .issuer(clientSession.getNote(DockerAuthV2Protocol.ISSUER))
+                .issuer(authSession.getClientNote(DockerAuthV2Protocol.ISSUER))
                 .subject(userSession.getUser().getUsername())
                 .issuedNow()
                 .audience(client.getClientId())
@@ -110,9 +110,11 @@ public class DockerAuthV2Protocol implements LoginProtocol {
                 .expiration(responseToken.getIssuedAt() + accessTokenLifespan);
 
         // Next, allow mappers to decorate the token to add/remove scopes as appropriate
-        final Set<ProtocolMapperModel> mappings = clientSessionCtx.getProtocolMappers();
-        for (final ProtocolMapperModel mapping : mappings) {
-            final ProtocolMapper mapper = (ProtocolMapper) session.getKeycloakSessionFactory().getProviderFactory(ProtocolMapper.class, mapping.getProtocolMapper());
+
+        for (Map.Entry<ProtocolMapperModel, ProtocolMapper> entry : ProtocolMapperUtils.getSortedProtocolMappers(session, clientSessionCtx)) {
+            ProtocolMapperModel mapping = entry.getKey();
+            ProtocolMapper mapper = entry.getValue();
+
             if (mapper instanceof DockerAuthV2AttributeMapper) {
                 final DockerAuthV2AttributeMapper dockerAttributeMapper = (DockerAuthV2AttributeMapper) mapper;
                 if (dockerAttributeMapper.appliesTo(responseToken)) {

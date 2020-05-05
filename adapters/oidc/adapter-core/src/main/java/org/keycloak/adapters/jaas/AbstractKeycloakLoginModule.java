@@ -23,7 +23,7 @@ import org.keycloak.adapters.AdapterUtils;
 import org.keycloak.adapters.KeycloakDeployment;
 import org.keycloak.adapters.KeycloakDeploymentBuilder;
 import org.keycloak.adapters.RefreshableKeycloakSecurityContext;
-import org.keycloak.adapters.rotation.AdapterRSATokenVerifier;
+import org.keycloak.adapters.rotation.AdapterTokenVerifier;
 import org.keycloak.common.VerificationException;
 import org.keycloak.common.util.FindFile;
 import org.keycloak.common.util.reflections.Reflections;
@@ -65,7 +65,7 @@ public abstract class AbstractKeycloakLoginModule implements LoginModule {
     protected String rolePrincipalClass;
 
     // This is to avoid parsing keycloak.json file in each request. Key is file location, Value is parsed keycloak deployment
-    private static ConcurrentMap<String, KeycloakDeployment> deployments = new ConcurrentHashMap<String, KeycloakDeployment>();
+    private static ConcurrentMap<String, KeycloakDeployment> deployments = new ConcurrentHashMap<>();
 
     @Override
     public void initialize(Subject subject, CallbackHandler callbackHandler, Map<String, ?> sharedState, Map<String, ?> options) {
@@ -202,8 +202,16 @@ public abstract class AbstractKeycloakLoginModule implements LoginModule {
 
 
     protected Auth bearerAuth(String tokenString) throws VerificationException {
-        AccessToken token = AdapterRSATokenVerifier.verifyToken(tokenString, deployment);
+        AccessToken token = AdapterTokenVerifier.verifyToken(tokenString, deployment);
+        return postTokenVerification(tokenString, token);
+    }
 
+
+    /**
+     * Called after accessToken was verified (including signature, expiration etc)
+     *
+     */
+    protected Auth postTokenVerification(String tokenString, AccessToken token) {
         boolean verifyCaller;
         if (deployment.isUseResourceRoleMappings()) {
             verifyCaller = token.isVerifyCaller(deployment.getResourceName());

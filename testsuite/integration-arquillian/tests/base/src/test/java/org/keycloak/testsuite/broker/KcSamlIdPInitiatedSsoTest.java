@@ -1,22 +1,34 @@
 package org.keycloak.testsuite.broker;
 
 import org.keycloak.admin.client.resource.ClientsResource;
+import org.keycloak.admin.client.resource.IdentityProviderResource;
 import org.keycloak.admin.client.resource.UsersResource;
+import org.keycloak.broker.saml.SAMLIdentityProviderConfig;
 import org.keycloak.common.util.StreamUtil;
 import org.keycloak.common.util.StringPropertyReplacer;
+import org.keycloak.dom.saml.v2.assertion.AssertionType;
+import org.keycloak.dom.saml.v2.assertion.AttributeStatementType;
+import org.keycloak.dom.saml.v2.assertion.AttributeType;
+import org.keycloak.dom.saml.v2.assertion.AudienceRestrictionType;
+import org.keycloak.dom.saml.v2.assertion.StatementAbstractType;
 import org.keycloak.dom.saml.v2.protocol.ResponseType;
+import org.keycloak.protocol.saml.SamlPrincipalType;
 import org.keycloak.representations.idm.ClientRepresentation;
+import org.keycloak.representations.idm.FederatedIdentityRepresentation;
+import org.keycloak.representations.idm.IdentityProviderRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.representations.idm.UserSessionRepresentation;
 import org.keycloak.saml.common.constants.JBossSAMLURIConstants;
 import org.keycloak.saml.processing.core.saml.v2.common.SAMLDocumentHolder;
+import org.keycloak.saml.processing.core.saml.v2.constants.X500SAMLProfileConstants;
+import org.keycloak.saml.processing.core.saml.v2.util.AssertionUtil;
 import org.keycloak.testsuite.AbstractKeycloakTest;
 import org.keycloak.testsuite.Assert;
 import org.keycloak.testsuite.pages.LoginPage;
 import org.keycloak.testsuite.pages.PageUtils;
 import org.keycloak.testsuite.pages.UpdateAccountInformationPage;
-import org.keycloak.testsuite.util.IOUtil;
+import org.keycloak.testsuite.utils.io.IOUtil;
 
 import org.keycloak.testsuite.util.Matchers;
 import org.keycloak.testsuite.util.SamlClient.Binding;
@@ -24,6 +36,7 @@ import org.keycloak.testsuite.util.SamlClientBuilder;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -38,17 +51,25 @@ import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.support.ui.ExpectedCondition;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
-import static org.keycloak.testsuite.broker.BrokerTestConstants.*;
+import static org.hamcrest.Matchers.notNullValue;
+import static org.keycloak.testsuite.broker.BrokerTestConstants.REALM_CONS_NAME;
+import static org.keycloak.testsuite.broker.BrokerTestConstants.REALM_PROV_NAME;
 import static org.junit.Assert.assertThat;
+import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude;
+import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude.AuthServer;
 
 /**
  *
  * @author hmlnarik
  */
+@AuthServerContainerExclude(AuthServer.REMOTE)
 public class KcSamlIdPInitiatedSsoTest extends AbstractKeycloakTest {
 
     private static final String PROVIDER_REALM_USER_NAME = "test";
@@ -61,6 +82,10 @@ public class KcSamlIdPInitiatedSsoTest extends AbstractKeycloakTest {
 
     @Page
     protected UpdateAccountInformationPage updateAccountInformationPage;
+
+    private String urlRealmConsumer2;
+    private String urlRealmConsumer;
+    private String urlRealmProvider;
 
     protected String getAuthRoot() {
         return suiteContext.getAuthServerInfo().getContextRoot().toString();
@@ -86,14 +111,31 @@ public class KcSamlIdPInitiatedSsoTest extends AbstractKeycloakTest {
           .forEach(Response::close);
     }
 
+    @Before
+    public void initRealmUrls() {
+        urlRealmProvider = getAuthRoot() + "/auth/realms/" + REALM_PROV_NAME;
+        urlRealmConsumer = getAuthRoot() + "/auth/realms/" + REALM_CONS_NAME;
+        urlRealmConsumer2 = getAuthRoot() + "/auth/realms/" + REALM_CONS_NAME + "-2";
+    }
+
+    @Before
+    public void resetPrincipalType() {
+        IdentityProviderResource idp = adminClient.realm(REALM_CONS_NAME).identityProviders().get("saml-leaf");
+        IdentityProviderRepresentation rep = idp.toRepresentation();
+        rep.getConfig().put(SAMLIdentityProviderConfig.PRINCIPAL_TYPE, SamlPrincipalType.SUBJECT.name());
+        idp.update(rep);
+    }
+
     @Override
     public void addTestRealms(List<RealmRepresentation> testRealms) {
+        initRealmUrls();
+
         Properties p = new Properties();
         p.put("name.realm.provider", REALM_PROV_NAME);
         p.put("name.realm.consumer", REALM_CONS_NAME);
-        p.put("url.realm.provider", getAuthRoot() + "/auth/realms/" + REALM_PROV_NAME);
-        p.put("url.realm.consumer", getAuthRoot() + "/auth/realms/" + REALM_CONS_NAME);
-        p.put("url.realm.consumer-2", getAuthRoot() + "/auth/realms/" + REALM_CONS_NAME + "-2");
+        p.put("url.realm.provider", urlRealmProvider);
+        p.put("url.realm.consumer", urlRealmConsumer);
+        p.put("url.realm.consumer-2", urlRealmConsumer2);
         
         testRealms.add(loadFromClasspath("kc3731-provider-realm.json", p));
         testRealms.add(loadFromClasspath("kc3731-broker-realm.json", p));
@@ -153,8 +195,20 @@ public class KcSamlIdPInitiatedSsoTest extends AbstractKeycloakTest {
         wait.until(condition);
     }
 
+    private void assertAudience(ResponseType resp, String expectedAudience) throws Exception {
+        AssertionType a = AssertionUtil.getAssertion(null, resp, null);
+        assertThat(a, notNullValue());
+        assertThat(a.getConditions(), notNullValue());
+        assertThat(a.getConditions().getConditions(), notNullValue());
+        assertThat(a.getConditions().getConditions(), hasSize(greaterThan(0)));
+        assertThat(a.getConditions().getConditions().get(0), instanceOf(AudienceRestrictionType.class));
+
+        AudienceRestrictionType ar = (AudienceRestrictionType) a.getConditions().getConditions().get(0);
+        assertThat(ar.getAudience(), contains(URI.create(expectedAudience)));
+    }
+
     @Test
-    public void testProviderIdpInitiatedLoginToApp() {
+    public void testProviderIdpInitiatedLoginToApp() throws Exception {
         SAMLDocumentHolder samlResponse = new SamlClientBuilder()
           .navigateTo(getSamlIdpInitiatedUrl(REALM_PROV_NAME, "samlbroker"))
           // Login in provider realm
@@ -166,6 +220,7 @@ public class KcSamlIdPInitiatedSsoTest extends AbstractKeycloakTest {
               assertThat(ob, Matchers.isSamlResponse(JBossSAMLURIConstants.STATUS_SUCCESS));
               ResponseType resp = (ResponseType) ob;
               assertThat(resp.getDestination(), is(getSamlBrokerIdpInitiatedUrl(REALM_CONS_NAME, "sales")));
+              assertAudience(resp, getSamlBrokerIdpInitiatedUrl(REALM_CONS_NAME, "sales"));
               return ob;
           })
           .build()
@@ -178,11 +233,12 @@ public class KcSamlIdPInitiatedSsoTest extends AbstractKeycloakTest {
 
         assertThat(samlResponse.getSamlObject(), Matchers.isSamlResponse(JBossSAMLURIConstants.STATUS_SUCCESS));
         ResponseType resp = (ResponseType) samlResponse.getSamlObject();
-        assertThat(resp.getDestination(), is("http://localhost:8180/auth/realms/" + REALM_CONS_NAME + "/app/auth"));
+        assertThat(resp.getDestination(), is(urlRealmConsumer + "/app/auth"));
+        assertAudience(resp, urlRealmConsumer + "/app/auth");
     }
 
     @Test
-    public void testConsumerIdpInitiatedLoginToApp() {
+    public void testConsumerIdpInitiatedLoginToApp() throws Exception {
         SAMLDocumentHolder samlResponse = new SamlClientBuilder()
           .navigateTo(getSamlIdpInitiatedUrl(REALM_CONS_NAME, "sales"))
           // Request login via saml-leaf
@@ -201,6 +257,7 @@ public class KcSamlIdPInitiatedSsoTest extends AbstractKeycloakTest {
               assertThat(ob, Matchers.isSamlResponse(JBossSAMLURIConstants.STATUS_SUCCESS));
               ResponseType resp = (ResponseType) ob;
               assertThat(resp.getDestination(), is(getSamlBrokerUrl(REALM_CONS_NAME)));
+              assertAudience(resp, urlRealmConsumer);
               return ob;
           })
           .build()
@@ -213,11 +270,12 @@ public class KcSamlIdPInitiatedSsoTest extends AbstractKeycloakTest {
 
         assertThat(samlResponse.getSamlObject(), Matchers.isSamlResponse(JBossSAMLURIConstants.STATUS_SUCCESS));
         ResponseType resp = (ResponseType) samlResponse.getSamlObject();
-        assertThat(resp.getDestination(), is("http://localhost:8180/auth/realms/" + REALM_CONS_NAME + "/app/auth"));
+        assertThat(resp.getDestination(), is(urlRealmConsumer + "/app/auth"));
+        assertAudience(resp, urlRealmConsumer + "/app/auth");
     }
 
     @Test
-    public void testTwoConsequentIdpInitiatedLogins() {
+    public void testTwoConsequentIdpInitiatedLogins() throws Exception {
         SAMLDocumentHolder samlResponse = new SamlClientBuilder()
           .navigateTo(getSamlIdpInitiatedUrl(REALM_PROV_NAME, "samlbroker"))
           // Login in provider realm
@@ -229,6 +287,7 @@ public class KcSamlIdPInitiatedSsoTest extends AbstractKeycloakTest {
               assertThat(ob, Matchers.isSamlResponse(JBossSAMLURIConstants.STATUS_SUCCESS));
               ResponseType resp = (ResponseType) ob;
               assertThat(resp.getDestination(), is(getSamlBrokerIdpInitiatedUrl(REALM_CONS_NAME, "sales")));
+              assertAudience(resp, getSamlBrokerIdpInitiatedUrl(REALM_CONS_NAME, "sales"));
               return ob;
             })
             .build()
@@ -241,11 +300,11 @@ public class KcSamlIdPInitiatedSsoTest extends AbstractKeycloakTest {
             .transformObject(ob -> {
               assertThat(ob, Matchers.isSamlResponse(JBossSAMLURIConstants.STATUS_SUCCESS));
               ResponseType resp = (ResponseType) ob;
-              assertThat(resp.getDestination(), is("http://localhost:8180/auth/realms/" + REALM_CONS_NAME + "/app/auth"));
+              assertThat(resp.getDestination(), is(urlRealmConsumer + "/app/auth"));
+              assertAudience(resp, urlRealmConsumer + "/app/auth");
               return null;
             })
             .build()
-
 
           // Now login to the second app
           .navigateTo(getSamlIdpInitiatedUrl(REALM_PROV_NAME, "samlbroker-2"))
@@ -259,6 +318,7 @@ public class KcSamlIdPInitiatedSsoTest extends AbstractKeycloakTest {
               assertThat(ob, Matchers.isSamlResponse(JBossSAMLURIConstants.STATUS_SUCCESS));
               ResponseType resp = (ResponseType) ob;
               assertThat(resp.getDestination(), is(getSamlBrokerIdpInitiatedUrl(REALM_CONS_NAME, "sales2")));
+              assertAudience(resp, getSamlBrokerIdpInitiatedUrl(REALM_CONS_NAME, "sales2"));
               return ob;
             })
             .build()
@@ -267,17 +327,74 @@ public class KcSamlIdPInitiatedSsoTest extends AbstractKeycloakTest {
 
         assertThat(samlResponse.getSamlObject(), Matchers.isSamlResponse(JBossSAMLURIConstants.STATUS_SUCCESS));
         ResponseType resp = (ResponseType) samlResponse.getSamlObject();
-        assertThat(resp.getDestination(), is("http://localhost:8180/auth/realms/" + REALM_CONS_NAME + "/app/auth/sales2/saml"));
+        assertThat(resp.getDestination(), is(urlRealmConsumer + "/app/auth2/saml"));
+        assertAudience(resp, urlRealmConsumer + "/app/auth2");
 
         assertSingleUserSession(REALM_CONS_NAME, CONSUMER_CHOSEN_USERNAME,
-          "http://localhost:8180/auth/realms/" + REALM_CONS_NAME + "/app/auth",
-          "http://localhost:8180/auth/realms/" + REALM_CONS_NAME + "/app/auth2"
+          urlRealmConsumer + "/app/auth",
+          urlRealmConsumer + "/app/auth2"
         );
 
         assertSingleUserSession(REALM_PROV_NAME, PROVIDER_REALM_USER_NAME,
-          getAuthRoot() + "/auth/realms/" + REALM_CONS_NAME,
-          getAuthRoot() + "/auth/realms/" + REALM_CONS_NAME + "-2"
+          urlRealmConsumer + "/broker/saml-leaf/endpoint/clients/sales",
+          urlRealmConsumer + "/broker/saml-leaf/endpoint/clients/sales2"
         );
+    }
+
+    // KEYCLOAK-7969
+    @Test
+    public void testProviderIdpInitiatedLoginWithPrincipalAttribute() throws Exception {
+        IdentityProviderResource idp = adminClient.realm(REALM_CONS_NAME).identityProviders().get("saml-leaf");
+        IdentityProviderRepresentation rep = idp.toRepresentation();
+        rep.getConfig().put(SAMLIdentityProviderConfig.PRINCIPAL_TYPE, SamlPrincipalType.ATTRIBUTE.name());
+        rep.getConfig().put(SAMLIdentityProviderConfig.PRINCIPAL_ATTRIBUTE, X500SAMLProfileConstants.UID.get());
+        idp.update(rep);
+
+        SAMLDocumentHolder samlResponse = new SamlClientBuilder()
+          .navigateTo(getSamlIdpInitiatedUrl(REALM_PROV_NAME, "samlbroker"))
+          // Login in provider realm
+          .login().user(PROVIDER_REALM_USER_NAME, PROVIDER_REALM_USER_PASSWORD).build()
+
+          // Send the response to the consumer realm
+          .processSamlResponse(Binding.POST)
+          .transformObject(ob -> {
+              assertThat(ob, Matchers.isSamlResponse(JBossSAMLURIConstants.STATUS_SUCCESS));
+              ResponseType resp = (ResponseType) ob;
+              assertThat(resp.getDestination(), is(getSamlBrokerIdpInitiatedUrl(REALM_CONS_NAME, "sales")));
+              assertAudience(resp, getSamlBrokerIdpInitiatedUrl(REALM_CONS_NAME, "sales"));
+
+              Set<StatementAbstractType> statements = resp.getAssertions().get(0).getAssertion().getStatements();
+
+              AttributeStatementType attributeType = (AttributeStatementType) statements.stream()
+                      .filter(statement -> statement instanceof AttributeStatementType)
+                      .findFirst().orElse(new AttributeStatementType());
+
+              AttributeType attr = new AttributeType(X500SAMLProfileConstants.UID.get());
+              attr.addAttributeValue(PROVIDER_REALM_USER_NAME);
+
+              attributeType.addAttribute(new AttributeStatementType.ASTChoiceType(attr));
+              resp.getAssertions().get(0).getAssertion().addStatement(attributeType);
+
+              return ob;
+          })
+          .build()
+
+          .updateProfile().username(CONSUMER_CHOSEN_USERNAME).email("test@localhost").firstName("Firstname").lastName("Lastname").build()
+          .followOneRedirect()
+
+          // Obtain the response sent to the app
+          .getSamlResponse(Binding.POST);
+
+        assertThat(samlResponse.getSamlObject(), Matchers.isSamlResponse(JBossSAMLURIConstants.STATUS_SUCCESS));
+        ResponseType resp = (ResponseType) samlResponse.getSamlObject();
+        assertThat(resp.getDestination(), is(urlRealmConsumer + "/app/auth"));
+        assertAudience(resp, urlRealmConsumer + "/app/auth");
+
+        UsersResource users = adminClient.realm(REALM_CONS_NAME).users();
+        String id = users.search(CONSUMER_CHOSEN_USERNAME).get(0).getId();
+        FederatedIdentityRepresentation fed = users.get(id).getFederatedIdentity().get(0);
+        assertThat(fed.getUserId(), is(PROVIDER_REALM_USER_NAME));
+        assertThat(fed.getUserName(), is(PROVIDER_REALM_USER_NAME));
     }
 
     private void assertSingleUserSession(String realmName, String userName, String... expectedClientIds) {

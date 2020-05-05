@@ -16,23 +16,35 @@
  */
 package org.keycloak.testsuite.authz;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
 
+import java.util.Collection;
+import java.util.Map;
+import java.util.Set;
+
+import org.hamcrest.Matchers;
 import org.junit.Test;
 import org.keycloak.admin.client.resource.AuthorizationResource;
 import org.keycloak.authorization.client.AuthzClient;
+import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.idm.authorization.AuthorizationRequest;
 import org.keycloak.representations.idm.authorization.AuthorizationResponse;
 import org.keycloak.representations.idm.authorization.JSPolicyRepresentation;
+import org.keycloak.representations.idm.authorization.Permission;
 import org.keycloak.representations.idm.authorization.PermissionRequest;
 import org.keycloak.representations.idm.authorization.PermissionResponse;
 import org.keycloak.representations.idm.authorization.ResourceRepresentation;
 import org.keycloak.representations.idm.authorization.ScopePermissionRepresentation;
+import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude;
+import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude.AuthServer;
 
 /**
  * @author <a href="mailto:psilva@redhat.com">Pedro Igor</a>
  */
+@AuthServerContainerExclude(AuthServer.REMOTE)
 public class UmaPermissionTicketPushedClaimsTest extends AbstractResourceServerTest {
 
     @Test
@@ -55,7 +67,7 @@ public class UmaPermissionTicketPushedClaimsTest extends AbstractResourceServerT
 
         AuthorizationResource authorization = getClient(getRealm()).authorization();
 
-        authorization.policies().js().create(policy);
+        authorization.policies().js().create(policy).close();
 
         ScopePermissionRepresentation representation = new ScopePermissionRepresentation();
 
@@ -63,7 +75,7 @@ public class UmaPermissionTicketPushedClaimsTest extends AbstractResourceServerT
         representation.addScope("withdraw");
         representation.addPolicy(policy.getName());
 
-        authorization.permissions().scope().create(representation);
+        authorization.permissions().scope().create(representation).close();
 
         AuthzClient authzClient = getAuthzClient();
         PermissionRequest permissionRequest = new PermissionRequest(resource.getId());
@@ -81,6 +93,18 @@ public class UmaPermissionTicketPushedClaimsTest extends AbstractResourceServerT
 
         assertNotNull(authorizationResponse);
         assertNotNull(authorizationResponse.getToken());
+
+        AccessToken token = toAccessToken(authorizationResponse.getToken());
+        Collection<Permission> permissions = token.getAuthorization().getPermissions();
+
+        assertEquals(1, permissions.size());
+
+        Permission permission = permissions.iterator().next();
+        Map<String, Set<String>> claims = permission.getClaims();
+
+        assertNotNull(claims);
+
+        assertThat(claims.get("my.bank.account.withdraw.value"), Matchers.containsInAnyOrder("50.5"));
 
         permissionRequest.setClaim("my.bank.account.withdraw.value", "100.5");
 

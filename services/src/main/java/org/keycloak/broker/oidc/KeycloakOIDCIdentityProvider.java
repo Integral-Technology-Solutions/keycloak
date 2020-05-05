@@ -25,6 +25,7 @@ import org.keycloak.constants.AdapterConstants;
 import org.keycloak.events.Details;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventBuilder;
+import org.keycloak.headers.SecurityHeadersProvider;
 import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.jose.jws.JWSInputException;
 import org.keycloak.models.KeycloakSession;
@@ -40,10 +41,10 @@ import org.keycloak.util.JsonSerialization;
 
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
+import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 import java.io.IOException;
-import java.security.PublicKey;
 
 /**
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
@@ -64,7 +65,8 @@ public class KeycloakOIDCIdentityProvider extends OIDCIdentityProvider {
 
     @Override
     protected void processAccessTokenResponse(BrokeredIdentityContext context, AccessTokenResponse response) {
-        JsonWebToken access = validateToken(response.getToken());
+        // Don't verify audience on accessToken as it may not be there. It was verified on IDToken already
+        JsonWebToken access = validateToken(response.getToken(), true);
         context.getContextData().put(VALIDATED_ACCESS_TOKEN, access);
     }
 
@@ -104,11 +106,14 @@ public class KeycloakOIDCIdentityProvider extends OIDCIdentityProvider {
                             && userSession.getState() != UserSessionModel.State.LOGGING_OUT
                             && userSession.getState() != UserSessionModel.State.LOGGED_OUT
                             ) {
-                        AuthenticationManager.backchannelLogout(session, realm, userSession, uriInfo, clientConnection, headers, false);
+                        AuthenticationManager.backchannelLogout(session, realm, userSession, session.getContext().getUri(), clientConnection, headers, false);
                     }
                 }
 
             }
+
+            // TODO Empty content with ok makes no sense. Should it display a page? Or use noContent?
+            session.getProvider(SecurityHeadersProvider.class).options().allowEmptyContentType();
             return Response.ok().build();
         }
 

@@ -18,12 +18,15 @@ package org.keycloak.forms.login.freemarker;
 
 import org.jboss.logging.Logger;
 import org.keycloak.OAuth2Constants;
+import org.keycloak.authentication.AuthenticationFlowContext;
+import org.keycloak.authentication.authenticators.browser.OTPFormAuthenticator;
 import org.keycloak.authentication.requiredactions.util.UpdateProfileContext;
 import org.keycloak.authentication.requiredactions.util.UserUpdateProfileContext;
 import org.keycloak.broker.provider.BrokeredIdentityContext;
 import org.keycloak.common.util.ObjectUtil;
 import org.keycloak.forms.login.LoginFormsPages;
 import org.keycloak.forms.login.LoginFormsProvider;
+import org.keycloak.forms.login.freemarker.model.AuthenticationContextBean;
 import org.keycloak.forms.login.freemarker.model.ClientBean;
 import org.keycloak.forms.login.freemarker.model.CodeBean;
 import org.keycloak.forms.login.freemarker.model.IdentityProviderBean;
@@ -33,15 +36,23 @@ import org.keycloak.forms.login.freemarker.model.ProfileBean;
 import org.keycloak.forms.login.freemarker.model.RealmBean;
 import org.keycloak.forms.login.freemarker.model.RegisterBean;
 import org.keycloak.forms.login.freemarker.model.RequiredActionUrlFormatterMethod;
+import org.keycloak.forms.login.freemarker.model.SAMLPostFormBean;
 import org.keycloak.forms.login.freemarker.model.TotpBean;
+import org.keycloak.forms.login.freemarker.model.TotpLoginBean;
 import org.keycloak.forms.login.freemarker.model.UrlBean;
-import org.keycloak.models.*;
+import org.keycloak.forms.login.freemarker.model.X509ConfirmBean;
+import org.keycloak.models.ClientModel;
+import org.keycloak.models.ClientScopeModel;
+import org.keycloak.models.Constants;
+import org.keycloak.models.IdentityProviderModel;
+import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.RealmModel;
+import org.keycloak.models.UserModel;
 import org.keycloak.models.utils.FormMessage;
 import org.keycloak.services.Urls;
 import org.keycloak.services.messages.Messages;
 import org.keycloak.services.resources.LoginActionsService;
 import org.keycloak.sessions.AuthenticationSessionModel;
-import org.keycloak.theme.BrowserSecurityHeaderSetup;
 import org.keycloak.theme.FreeMarkerException;
 import org.keycloak.theme.FreeMarkerUtil;
 import org.keycloak.theme.Theme;
@@ -60,7 +71,14 @@ import javax.ws.rs.core.UriInfo;
 import java.io.IOException;
 import java.net.URI;
 import java.text.MessageFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Properties;
 
 import static org.keycloak.models.UserModel.RequiredAction.UPDATE_PASSWORD;
 
@@ -75,9 +93,10 @@ public class FreeMarkerLoginFormsProvider implements LoginFormsProvider {
     protected Response.Status status;
     protected javax.ws.rs.core.MediaType contentType;
     protected List<ClientScopeModel> clientScopesRequested;
-    protected Map<String, String> httpResponseHeaders = new HashMap<String, String>();
+    protected Map<String, String> httpResponseHeaders = new HashMap<>();
     protected URI actionUri;
     protected String execution;
+    protected AuthenticationFlowContext context;
 
     protected List<FormMessage> messages = null;
     protected MessageType messageType = MessageType.ERROR;
@@ -95,12 +114,12 @@ public class FreeMarkerLoginFormsProvider implements LoginFormsProvider {
 
     protected UserModel user;
 
-    protected final Map<String, Object> attributes = new HashMap<String, Object>();
+    protected final Map<String, Object> attributes = new HashMap<>();
 
     public FreeMarkerLoginFormsProvider(KeycloakSession session, FreeMarkerUtil freeMarker) {
         this.session = session;
         this.freeMarker = freeMarker;
-        this.attributes.put("scripts", new LinkedList<String>());
+        this.attributes.put("scripts", new LinkedList<>());
         this.realm = session.getContext().getRealm();
         this.client = session.getContext().getClient();
         this.uriInfo = session.getContext().getUri();
@@ -171,7 +190,6 @@ public class FreeMarkerLoginFormsProvider implements LoginFormsProvider {
         createCommonAttributes(theme, locale, messagesBundle, uriBuilder, page);
 
         attributes.put("login", new LoginBean(formData));
-
         if (status != null) {
             attributes.put("statusCode", status.getStatusCode());
         }
@@ -193,6 +211,9 @@ public class FreeMarkerLoginFormsProvider implements LoginFormsProvider {
                 attributes.put("brokerContext", brokerContext);
                 attributes.put("idpAlias", idpAlias);
                 break;
+            case LOGIN_TOTP:
+                attributes.put("otpLogin", new TotpLoginBean(session, realm, user, (String) this.attributes.get(OTPFormAuthenticator.SELECTED_OTP_CREDENTIAL_ID)));
+                break;
             case REGISTER:
                 attributes.put("register", new RegisterBean(formData));
                 break;
@@ -204,11 +225,17 @@ public class FreeMarkerLoginFormsProvider implements LoginFormsProvider {
             case CODE:
                 attributes.put(OAuth2Constants.CODE, new CodeBean(accessCode, messageType == MessageType.ERROR ? getFirstMessageUnformatted() : null));
                 break;
+            case X509_CONFIRM:
+                attributes.put("x509", new X509ConfirmBean(formData));
+                break;
+            case SAML_POST_FORM:
+                attributes.put("samlPost", new SAMLPostFormBean(formData));
+                break;
         }
 
         return processTemplate(theme, Templates.getTemplate(page), locale);
     }
-
+    
     @Override
     public Response createForm(String form) {
         Theme theme;
@@ -342,7 +369,7 @@ public class FreeMarkerLoginFormsProvider implements LoginFormsProvider {
 
         Locale locale = session.getContext().resolveLocale(user);
         Properties messagesBundle = handleThemeResources(theme, locale);
-        FormMessage msg = new FormMessage(message, parameters);
+        FormMessage msg = new FormMessage(message, (Object[]) parameters);
         return formatMessage(msg, messagesBundle, locale);
     }
 
@@ -365,24 +392,28 @@ public class FreeMarkerLoginFormsProvider implements LoginFormsProvider {
         URI baseUriWithCodeAndClientId = baseUriBuilder.build();
 
         if (client != null) {
-            attributes.put("client", new ClientBean(client, baseUri));
+            attributes.put("client", new ClientBean(session, client));
         }
 
         if (realm != null) {
             attributes.put("realm", new RealmBean(realm));
 
             List<IdentityProviderModel> identityProviders = realm.getIdentityProviders();
-            identityProviders = LoginFormsUtil.filterIdentityProviders(identityProviders, session, realm, attributes, formData);
+            identityProviders = LoginFormsUtil.filterIdentityProviders(identityProviders, session, realm, attributes, formData, context);
             attributes.put("social", new IdentityProviderBean(realm, session, identityProviders, baseUriWithCodeAndClientId));
 
             attributes.put("url", new UrlBean(realm, theme, baseUri, this.actionUri));
             attributes.put("requiredActionUrl", new RequiredActionUrlFormatterMethod(realm, baseUri));
+            attributes.put("auth", new AuthenticationContextBean(context, page));
+            attributes.put(Constants.EXECUTION, execution);
 
             if (realm.isInternationalizationEnabled()) {
                 UriBuilder b;
                 if (page != null) {
                     switch (page) {
                         case LOGIN:
+                        case LOGIN_USERNAME:
+                        case X509_CONFIRM:
                             b = UriBuilder.fromUri(Urls.realmLoginPage(baseUri, realm.getName()));
                             break;
                         case REGISTER:
@@ -401,11 +432,19 @@ public class FreeMarkerLoginFormsProvider implements LoginFormsProvider {
                     b.queryParam(Constants.EXECUTION, execution);
                 }
 
+                if (authenticationSession != null && authenticationSession.getAuthNote(Constants.KEY) != null) {
+                    b.queryParam(Constants.KEY, authenticationSession.getAuthNote(Constants.KEY));
+                }
+
                 attributes.put("locale", new LocaleBean(realm, locale, b, messagesBundle));
             }
         }
         if (realm != null && user != null && session != null) {
             attributes.put("authenticatorConfigured", new AuthenticatorConfiguredMethod(realm, user, session));
+        }
+
+        if (authenticationSession != null && authenticationSession.getClientNote(Constants.KC_ACTION_EXECUTING) != null) {
+            attributes.put("isAppInitiatedAction", true);
         }
     }
 
@@ -422,7 +461,6 @@ public class FreeMarkerLoginFormsProvider implements LoginFormsProvider {
             String result = freeMarker.processTemplate(attributes, templateName, theme);
             javax.ws.rs.core.MediaType mediaType = contentType == null ? MediaType.TEXT_HTML_UTF_8_TYPE : contentType;
             Response.ResponseBuilder builder = Response.status(status == null ? Response.Status.OK : status).type(mediaType).language(locale).entity(result);
-            BrowserSecurityHeaderSetup.headers(builder, realm);
             for (Map.Entry<String, String> entry : httpResponseHeaders.entrySet()) {
                 builder.header(entry.getKey(), entry.getValue());
             }
@@ -434,9 +472,17 @@ public class FreeMarkerLoginFormsProvider implements LoginFormsProvider {
     }
 
     @Override
-    public Response createLogin() {
+    public Response createLoginUsernamePassword() {
         return createResponse(LoginFormsPages.LOGIN);
     }
+
+    public Response createLoginUsername(){
+        return createResponse(LoginFormsPages.LOGIN_USERNAME);
+    };
+
+    public Response createLoginPassword(){
+        return createResponse(LoginFormsPages.LOGIN_PASSWORD);
+    };
 
     @Override
     public Response createPasswordReset() {
@@ -446,6 +492,11 @@ public class FreeMarkerLoginFormsProvider implements LoginFormsProvider {
     @Override
     public Response createLoginTotp() {
         return createResponse(LoginFormsPages.LOGIN_TOTP);
+    }
+
+    @Override
+    public Response createLoginWebAuthn() {
+        return createResponse(LoginFormsPages.LOGIN_WEBAUTHN);
     }
 
     @Override
@@ -495,13 +546,33 @@ public class FreeMarkerLoginFormsProvider implements LoginFormsProvider {
     }
 
     @Override
+    public Response createWebAuthnErrorPage() {
+        return createResponse(LoginFormsPages.ERROR_WEBAUTHN);
+    }
+
+    @Override
     public Response createOAuthGrant() {
         return createResponse(LoginFormsPages.OAUTH_GRANT);
     }
 
     @Override
+    public Response createSelectAuthenticator() {
+        return createResponse(LoginFormsPages.LOGIN_SELECT_AUTHENTICATOR);
+    }
+
+    @Override
     public Response createCode() {
         return createResponse(LoginFormsPages.CODE);
+    }
+
+    @Override
+    public Response createX509ConfirmPage() {
+        return createResponse(LoginFormsPages.X509_CONFIRM);
+    }
+
+    @Override
+    public Response createSamlPostForm() {
+        return createResponse(LoginFormsPages.SAML_POST_FORM);
     }
 
     protected void setMessage(MessageType type, String message, Object... parameters) {
@@ -625,14 +696,12 @@ public class FreeMarkerLoginFormsProvider implements LoginFormsProvider {
         this.status = status;
         return this;
     }
+
     @Override
     public LoginFormsProvider setMediaType(javax.ws.rs.core.MediaType type) {
         this.contentType = type;
         return this;
     }
-
-
-
 
     @Override
     public LoginFormsProvider setActionUri(URI actionUri) {
@@ -649,6 +718,11 @@ public class FreeMarkerLoginFormsProvider implements LoginFormsProvider {
     @Override
     public LoginFormsProvider setResponseHeader(String headerName, String headerValue) {
         this.httpResponseHeaders.put(headerName, headerValue);
+        return this;
+    }
+
+    public LoginFormsProvider setAuthContext(AuthenticationFlowContext context){
+        this.context = context;
         return this;
     }
 

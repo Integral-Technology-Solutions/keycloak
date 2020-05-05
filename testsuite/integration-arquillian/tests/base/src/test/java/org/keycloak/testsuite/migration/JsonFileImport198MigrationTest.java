@@ -16,20 +16,18 @@
  */
 package org.keycloak.testsuite.migration;
 
-import org.jboss.arquillian.container.test.api.Deployment;
-import org.jboss.arquillian.container.test.api.TargetsContainer;
-import org.jboss.shrinkwrap.api.spec.WebArchive;
 import org.junit.Test;
 import org.keycloak.exportimport.util.ImportUtils;
 import org.keycloak.representations.idm.RealmRepresentation;
-import org.keycloak.testsuite.arquillian.DeploymentTargetModifier;
-import org.keycloak.testsuite.runonserver.RunOnServerDeployment;
-import org.keycloak.testsuite.util.IOUtil;
+import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude;
+import org.keycloak.testsuite.utils.io.IOUtil;
 import org.keycloak.util.JsonSerialization;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+
+import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude.AuthServer;
 
 /**
  * Tests that we can import json file from previous version.  MigrationTest only tests DB.
@@ -37,13 +35,8 @@ import java.util.Map;
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
  * @version $Revision: 1 $
  */
+@AuthServerContainerExclude(AuthServer.REMOTE)
 public class JsonFileImport198MigrationTest extends AbstractJsonFileImportMigrationTest {
-
-    @Deployment
-    @TargetsContainer(DeploymentTargetModifier.AUTH_SERVER_CURRENT)
-    public static WebArchive deploy() {
-        return RunOnServerDeployment.create();
-    }
 
     @Override
     public void addTestRealms(List<RealmRepresentation> testRealms) {
@@ -63,23 +56,26 @@ public class JsonFileImport198MigrationTest extends AbstractJsonFileImportMigrat
 
     @Test
     public void migration1_9_8Test() throws Exception {
-        testMigratedMigrationData();
+        checkRealmsImported();
+        testMigratedMigrationData(false);
         testMigrationTo2_0_0();
         testMigrationTo2_1_0();
         testMigrationTo2_2_0();
         testMigrationTo2_3_0();
         testMigrationTo2_5_0();
-        //testMigrationTo2_5_1(); // Offline tokens migration is skipped for JSON
-        testMigrationTo3_x_and_higher();
+        testMigrationTo3_x();
+        testMigrationTo4_x(false, false);
+        testMigrationTo5_x();
+        testMigrationTo6_x();
+        testMigrationTo7_x(false);
+        testMigrationTo8_x();
+        testMigrationTo9_x();
     }
 
+    @Override
     protected void testMigrationTo2_3_0() {
         testUpdateProtocolMappers(migrationRealm);
         testExtractRealmKeysMigrationRealm(migrationRealm);
     }
-
-
-
-
 
 }

@@ -17,10 +17,11 @@
 package org.keycloak.testsuite.adapter.example.hal;
 
 import static org.junit.Assert.assertTrue;
-import static org.keycloak.testsuite.util.IOUtil.loadRealm;
+import static org.keycloak.testsuite.utils.io.IOUtil.loadRealm;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.TimeoutException;
 import org.jboss.arquillian.drone.api.annotation.Drone;
 
 import org.jboss.arquillian.graphene.page.Page;
@@ -30,8 +31,9 @@ import org.junit.Test;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.testsuite.adapter.AbstractAdapterTest;
 import org.keycloak.testsuite.arquillian.AppServerTestEnricher;
+import org.keycloak.testsuite.arquillian.AuthServerTestEnricher;
 import org.keycloak.testsuite.arquillian.annotation.AppServerContainer;
-import org.keycloak.testsuite.arquillian.containers.ContainerConstants;
+import org.keycloak.testsuite.utils.arquillian.ContainerConstants;
 import org.keycloak.testsuite.pages.AccountUpdateProfilePage;
 import org.keycloak.testsuite.pages.AppServerWelcomePage;
 import org.keycloak.testsuite.util.DroneUtils;
@@ -43,14 +45,13 @@ import org.wildfly.extras.creaper.core.online.OnlineManagementClient;
 import org.wildfly.extras.creaper.core.online.operations.Address;
 import org.wildfly.extras.creaper.core.online.operations.OperationException;
 import org.wildfly.extras.creaper.core.online.operations.Operations;
+import org.wildfly.extras.creaper.core.online.operations.admin.Administration;
 
 /**
  *
  * @author <a href="mailto:psilva@redhat.com">Pedro Igor</a>
  */
-@AppServerContainer(ContainerConstants.APP_SERVER_WILDFLY)
-@AppServerContainer(ContainerConstants.APP_SERVER_EAP)
-@AppServerContainer(ContainerConstants.APP_SERVER_EAP6)
+@AppServerContainer(ContainerConstants.APP_SERVER_EAP71)
 public class ConsoleProtectionTest extends AbstractAdapterTest {
 
     // Javascript browser needed KEYCLOAK-4703
@@ -73,6 +74,8 @@ public class ConsoleProtectionTest extends AbstractAdapterTest {
 
     @Before
     public void beforeConsoleProtectionTest() throws IOException, OperationException {
+        Assume.assumeTrue("This testClass doesn't work with phantomjs", !"phantomjs".equals(System.getProperty("js.browser")));
+
         try (OnlineManagementClient clientWorkerNodeClient = AppServerTestEnricher.getManagementClient()) {
 
             Operations operations = new Operations(clientWorkerNodeClient);
@@ -80,7 +83,7 @@ public class ConsoleProtectionTest extends AbstractAdapterTest {
             Assume.assumeTrue(operations.exists(Address.subsystem("elytron").and("security-domain", "KeycloakDomain")));
 
             // Create a realm for both wildfly console and mgmt interface
-            clientWorkerNodeClient.execute("/subsystem=keycloak/realm=jboss-infra:add(auth-server-url=http://localhost:8180/auth,realm-public-key=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCrVrCuTtArbgaZzL1hvh0xtL5mc7o0NqPVnYXkLvgcwiC3BjLGw1tGEGoJaXDuSaRllobm53JBhjx33UNv+5z/UMG4kytBWxheNVKnL6GgqlNabMaFfPLPCF8kAgKnsi79NMo+n6KnSY8YeUmec/p2vjO2NjsSAVcWEQMVhJ31LwIDAQAB)");
+            clientWorkerNodeClient.execute("/subsystem=keycloak/realm=jboss-infra:add(auth-server-url=" + AuthServerTestEnricher.getAuthServerContextRoot() + "/auth,realm-public-key=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCrVrCuTtArbgaZzL1hvh0xtL5mc7o0NqPVnYXkLvgcwiC3BjLGw1tGEGoJaXDuSaRllobm53JBhjx33UNv+5z/UMG4kytBWxheNVKnL6GgqlNabMaFfPLPCF8kAgKnsi79NMo+n6KnSY8YeUmec/p2vjO2NjsSAVcWEQMVhJ31LwIDAQAB)");
 
             // Create a secure-deployment in order to protect mgmt interface
             clientWorkerNodeClient.execute("/subsystem=keycloak/secure-deployment=wildfly-management:add(realm=jboss-infra,resource=wildfly-management,principal-attribute=preferred_username,bearer-only=true,ssl-required=EXTERNAL)");
@@ -98,13 +101,15 @@ public class ConsoleProtectionTest extends AbstractAdapterTest {
             // Create a secure-server in order to publish the wildfly console configuration via mgmt interface
             clientWorkerNodeClient.execute("/subsystem=keycloak/secure-server=wildfly-console:add(realm=jboss-infra,resource=wildfly-console,public-client=true)");
 
-            // reload
-            clientWorkerNodeClient.execute("reload");
-        } catch (CliException cause) {
+            log.debug("Reloading the server");
+            new Administration(clientWorkerNodeClient).reload();
+            log.debug("Reloaded");
+        } catch (CliException | IOException | InterruptedException | TimeoutException cause) {
             throw new RuntimeException("Failed to configure app server", cause);
         }
 
         DroneUtils.addWebDriver(jsDriver);
+        log.debug("Added jsDriver");
     }
 
     private void testLogin() throws InterruptedException {

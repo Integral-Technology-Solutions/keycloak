@@ -10,12 +10,13 @@ import static org.keycloak.testsuite.broker.BrokerTestTools.createIdentityProvid
 import static org.keycloak.testsuite.broker.BrokerTestTools.waitForPage;
 import org.apache.commons.lang3.StringUtils;
 import org.keycloak.admin.client.resource.UsersResource;
+import org.keycloak.models.IdentityProviderSyncMode;
 import org.keycloak.representations.idm.IdentityProviderRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.testsuite.Assert;
 import org.keycloak.testsuite.arquillian.SuiteContext;
 
-public class KcOidcBrokerNoLoginHintTest extends KcOidcBrokerLoginHintTest {
+public class KcOidcBrokerNoLoginHintTest extends AbstractBrokerTest {
 
     @Override
     protected BrokerConfiguration getBrokerConfiguration() {
@@ -25,11 +26,11 @@ public class KcOidcBrokerNoLoginHintTest extends KcOidcBrokerLoginHintTest {
     private class KcOidcBrokerConfigurationWithNoLoginHint extends KcOidcBrokerConfiguration {
         
         @Override
-        public IdentityProviderRepresentation setUpIdentityProvider(SuiteContext suiteContext) {
+        public IdentityProviderRepresentation setUpIdentityProvider(SuiteContext suiteContext, IdentityProviderSyncMode syncMode) {
             IdentityProviderRepresentation idp = createIdentityProvider(IDP_OIDC_ALIAS, IDP_OIDC_PROVIDER_ID);
 
             Map<String, String> config = idp.getConfig();
-            applyDefaultConfiguration(suiteContext, config);
+            applyDefaultConfiguration(suiteContext, config, syncMode);
             config.put("loginHint", "false");
             return idp;
         }
@@ -42,7 +43,7 @@ public class KcOidcBrokerNoLoginHintTest extends KcOidcBrokerLoginHintTest {
         driver.navigate().to(driver.getCurrentUrl() + "&login_hint=" + USER_EMAIL);
 
         log.debug("Clicking social " + bc.getIDPAlias());
-        accountLoginPage.clickSocial(bc.getIDPAlias());
+        loginPage.clickSocial(bc.getIDPAlias());
 
         waitForPage(driver, "log in to", true);
 
@@ -50,10 +51,10 @@ public class KcOidcBrokerNoLoginHintTest extends KcOidcBrokerLoginHintTest {
                 driver.getCurrentUrl().contains("/auth/realms/" + bc.providerRealmName() + "/"));
 
         Assert.assertTrue("User identifiant should not be fullfilled",
-                StringUtils.isBlank(accountLoginPage.getUsername()));
+                StringUtils.isBlank(loginPage.getUsername()));
         
         log.debug("Logging in");
-        accountLoginPage.login(bc.getUserLogin(), bc.getUserPassword());
+        loginPage.login(bc.getUserLogin(), bc.getUserPassword());
 
         waitForPage(driver, "update account information", false);
 

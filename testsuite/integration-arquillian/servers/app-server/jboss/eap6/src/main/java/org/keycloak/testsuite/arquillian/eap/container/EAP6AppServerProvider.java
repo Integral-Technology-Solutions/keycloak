@@ -85,8 +85,12 @@ public class EAP6AppServerProvider implements AppServerContainerProvider {
         createChild("jbossHome", appServerHome);
         createChild("javaHome", appServerJavaHome);
         createChild("jbossArguments", 
+                "-Djboss.server.base.dir=" + appServerHome + "/standalone-test " +
+                "-Djboss.server.config.dir=" + appServerHome + "/standalone-test/configuration " +
+                "-Djboss.server.log.dir=" + appServerHome + "/standalone-test/log " +
                 "-Djboss.socket.binding.port-offset=" + appServerPortOffset + " " +
-                System.getProperty("adapter.test.props", "")
+                System.getProperty("adapter.test.props", " ") +
+                System.getProperty("kie.maven.settings", " ")
         );
         createChild("javaVmArguments", 
                 System.getProperty("app.server.jboss.jvm.debug.args", "") + " " +
@@ -131,7 +135,8 @@ public class EAP6AppServerProvider implements AppServerContainerProvider {
                 "-Djboss.server.base.dir=" + appServerHome + "/standalone-ha-node-" + number + " " +
                 "-Djboss.socket.binding.port-offset=" + portOffset + " " +
                 "-Djboss.node.name=ha-node-" + number + " " +
-                System.getProperty("adapter.test.props", "")
+                System.getProperty("adapter.test.props", " ") +
+                System.getProperty("kie.maven.settings", " ")
         );
         createChild("javaVmArguments", 
                 "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=790" + number + " " +

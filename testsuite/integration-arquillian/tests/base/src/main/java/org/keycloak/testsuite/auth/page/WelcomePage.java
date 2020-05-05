@@ -21,7 +21,8 @@ import org.openqa.selenium.By;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.FindBy;
 
-import static org.keycloak.testsuite.page.Form.setInputValue;
+import static org.keycloak.testsuite.util.UIUtils.getTextFromElement;
+import static org.keycloak.testsuite.util.UIUtils.setTextInputValue;
 import static org.keycloak.testsuite.util.UIUtils.clickLink;
 
 /**
@@ -41,15 +42,18 @@ public class WelcomePage extends AuthServer {
     @FindBy(id = "create-button")
     private WebElement createButton;
 
+    @FindBy(css = ".welcome-header h1")
+    private WebElement welcomeMessage;
+
     public boolean isPasswordSet() {
         return !(driver.getPageSource().contains("Please create an initial admin user to get started.") ||
                  driver.getPageSource().contains("You need local access to create the initial admin user."));
     }
 
     public void setPassword(String username, String password) {
-        setInputValue(usernameInput, username);
-        setInputValue(passwordInput, password);
-        setInputValue(passwordConfirmationInput, password);
+        setTextInputValue(usernameInput, username);
+        setTextInputValue(passwordInput, password);
+        setTextInputValue(passwordConfirmationInput, password);
 
         clickLink(createButton);
 
@@ -61,5 +65,9 @@ public class WelcomePage extends AuthServer {
     public void navigateToAdminConsole() {
         clickLink(driver.findElement(By.linkText("Administration Console")));
     }
-    
+
+    public String getWelcomeMessage() {
+        return getTextFromElement(welcomeMessage);
+    }
+
 }

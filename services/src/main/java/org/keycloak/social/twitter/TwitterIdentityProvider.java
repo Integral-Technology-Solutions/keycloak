@@ -22,8 +22,8 @@ import org.keycloak.broker.oidc.OAuth2IdentityProviderConfig;
 import org.keycloak.broker.provider.AbstractIdentityProvider;
 import org.keycloak.broker.provider.AuthenticationRequest;
 import org.keycloak.broker.provider.BrokeredIdentityContext;
-import org.keycloak.broker.provider.IdentityBrokerException;
 import org.keycloak.broker.provider.ExchangeTokenToIdentityProviderToken;
+import org.keycloak.broker.provider.IdentityBrokerException;
 import org.keycloak.broker.provider.IdentityProvider;
 import org.keycloak.broker.provider.util.IdentityBrokerState;
 import org.keycloak.broker.social.SocialIdentityProvider;
@@ -42,6 +42,7 @@ import org.keycloak.services.ErrorPage;
 import org.keycloak.services.managers.ClientSessionCode;
 import org.keycloak.services.messages.Messages;
 import org.keycloak.sessions.AuthenticationSessionModel;
+import org.keycloak.vault.VaultStringSecret;
 import twitter4j.Twitter;
 import twitter4j.TwitterFactory;
 import twitter4j.auth.AccessToken;
@@ -83,9 +84,9 @@ public class TwitterIdentityProvider extends AbstractIdentityProvider<OAuth2Iden
 
     @Override
     public Response performLogin(AuthenticationRequest request) {
-        try {
+        try (VaultStringSecret vaultStringSecret = session.vault().getStringSecret(getConfig().getClientSecret())) {
             Twitter twitter = new TwitterFactory().getInstance();
-            twitter.setOAuthConsumer(getConfig().getClientId(), getConfig().getClientSecret());
+            twitter.setOAuthConsumer(getConfig().getClientId(), vaultStringSecret.get().orElse(getConfig().getClientSecret()));
 
             URI uri = new URI(request.getRedirectUri() + "?state=" + request.getState().getEncoded());
 
@@ -173,11 +174,6 @@ public class TwitterIdentityProvider extends AbstractIdentityProvider<OAuth2Iden
         @Context
         protected HttpHeaders headers;
 
-        @Context
-        protected UriInfo uriInfo;
-
-
-
         public Endpoint(RealmModel realm, AuthenticationCallback callback, EventBuilder event) {
             this.realm = realm;
             this.callback = callback;
@@ -193,10 +189,10 @@ public class TwitterIdentityProvider extends AbstractIdentityProvider<OAuth2Iden
             }
 
             AuthenticationSessionModel authSession = null;
-            try {
+            try (VaultStringSecret vaultStringSecret = session.vault().getStringSecret(getConfig().getClientSecret())) {
                 Twitter twitter = new TwitterFactory().getInstance();
 
-                twitter.setOAuthConsumer(getConfig().getClientId(), getConfig().getClientSecret());
+                twitter.setOAuthConsumer(getConfig().getClientId(), vaultStringSecret.get().orElse(getConfig().getClientSecret()));
 
                 IdentityBrokerState idpState = IdentityBrokerState.encoded(state);
                 String clientId = idpState.getClientId();

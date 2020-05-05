@@ -23,7 +23,6 @@ import org.jboss.arquillian.test.api.ArquillianResource;
 import org.jboss.shrinkwrap.api.spec.WebArchive;
 import org.junit.Assert;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.keycloak.admin.client.resource.ClientResource;
 import org.keycloak.admin.client.resource.RealmResource;
@@ -44,7 +43,7 @@ import org.keycloak.testsuite.adapter.AbstractServletsAdapterTest;
 import org.keycloak.testsuite.admin.ApiUtil;
 import org.keycloak.testsuite.arquillian.AuthServerTestEnricher;
 import org.keycloak.testsuite.arquillian.annotation.AppServerContainer;
-import org.keycloak.testsuite.arquillian.containers.ContainerConstants;
+import org.keycloak.testsuite.utils.arquillian.ContainerConstants;
 import org.keycloak.testsuite.broker.BrokerTestTools;
 import org.keycloak.testsuite.page.AbstractPageWithInjectedUrl;
 import org.keycloak.testsuite.pages.AccountUpdateProfilePage;
@@ -75,8 +74,10 @@ import static org.keycloak.testsuite.admin.ApiUtil.createUserAndResetPasswordWit
  */
 @AppServerContainer(ContainerConstants.APP_SERVER_UNDERTOW)
 @AppServerContainer(ContainerConstants.APP_SERVER_WILDFLY)
+@AppServerContainer(ContainerConstants.APP_SERVER_WILDFLY_DEPRECATED)
 @AppServerContainer(ContainerConstants.APP_SERVER_EAP)
 @AppServerContainer(ContainerConstants.APP_SERVER_EAP6)
+@AppServerContainer(ContainerConstants.APP_SERVER_EAP71)
 public class ClientInitiatedAccountLinkTest extends AbstractServletsAdapterTest {
     public static final String CHILD_IDP = "child";
     public static final String PARENT_IDP = "parent-idp";
@@ -125,9 +126,6 @@ public class ClientInitiatedAccountLinkTest extends AbstractServletsAdapterTest 
         servlet.setClientId("client-linking");
         servlet.setProtocol(OIDCLoginProtocol.LOGIN_PROTOCOL);
         String uri = "/client-linking";
-        if (!isRelative()) {
-            uri = appServerContextRootPage.toString() + uri;
-        }
         servlet.setAdminUrl(uri);
         servlet.setDirectAccessGrantsEnabled(true);
         servlet.setBaseUrl(uri);
@@ -204,8 +202,8 @@ public class ClientInitiatedAccountLinkTest extends AbstractServletsAdapterTest 
 
 
     @Test
-    @Ignore("KEYCLOAK-7562")
     public void testErrorConditions() throws Exception {
+        String helloUrl = appPage.getUriBuilder().clone().path("hello").build().toASCIIString();
 
         RealmResource realm = adminClient.realms().realm(CHILD_IDP);
         List<FederatedIdentityRepresentation> links = realm.users().get(childUserId).getFederatedIdentity();
@@ -239,17 +237,18 @@ public class ClientInitiatedAccountLinkTest extends AbstractServletsAdapterTest 
 
         // now log in
 
-        navigateTo( appPage.getInjectedUrl() + "/hello");
+
+        navigateTo(helloUrl);
         Assert.assertTrue(loginPage.isCurrent(CHILD_IDP));
         loginPage.login("child", "password");
-        Assert.assertTrue(driver.getCurrentUrl().startsWith(appPage.getInjectedUrl() + "/hello"));
+        Assert.assertTrue(driver.getCurrentUrl().startsWith(helloUrl));
         Assert.assertTrue(driver.getPageSource().contains("Unknown request:"));
 
         // now test CSRF with bad hash.
 
         navigateTo(linkUrl);
 
-        Assert.assertTrue(driver.getPageSource().contains("We're sorry..."));
+        Assert.assertTrue(driver.getPageSource().contains("We are sorry..."));
 
         logoutAll();
 
@@ -268,10 +267,10 @@ public class ClientInitiatedAccountLinkTest extends AbstractServletsAdapterTest 
         roles.add(userRole);
         clientResource.getScopeMappings().realmLevel().add(roles);
 
-        navigateTo( appPage.getInjectedUrl() + "/hello");
+        navigateTo(helloUrl);
         Assert.assertTrue(loginPage.isCurrent(CHILD_IDP));
         loginPage.login("child", "password");
-        Assert.assertTrue(driver.getCurrentUrl().startsWith(appPage.getInjectedUrl() + "/hello"));
+        Assert.assertTrue(driver.getCurrentUrl().startsWith(helloUrl));
         Assert.assertTrue(driver.getPageSource().contains("Unknown request:"));
 
 
@@ -375,12 +374,6 @@ public class ClientInitiatedAccountLinkTest extends AbstractServletsAdapterTest 
         Assert.assertTrue(links.isEmpty());
 
         logoutAll();
-
-
-
-
-
-
     }
 
     @Test
@@ -578,7 +571,7 @@ public class ClientInitiatedAccountLinkTest extends AbstractServletsAdapterTest 
         loginUpdateProfilePage.update("Joe", "Doe", "joe@parent.com");
 
         errorPage.assertCurrent();
-        Assert.assertEquals("You are already authenticated as different user 'child' in this session. Please logout first.", errorPage.getError());
+        Assert.assertEquals("You are already authenticated as different user 'child' in this session. Please log out first.", errorPage.getError());
 
         logoutAll();
 

@@ -28,7 +28,6 @@ import org.keycloak.representations.idm.authorization.DecisionStrategy;
 import org.keycloak.representations.idm.authorization.GroupPolicyRepresentation;
 import org.keycloak.representations.idm.authorization.JSPolicyRepresentation;
 import org.keycloak.representations.idm.authorization.RolePolicyRepresentation;
-import org.keycloak.representations.idm.authorization.RulePolicyRepresentation;
 import org.keycloak.representations.idm.authorization.ScopePermissionRepresentation;
 import org.keycloak.representations.idm.authorization.TimePolicyRepresentation;
 import org.keycloak.representations.idm.authorization.UserPolicyRepresentation;
@@ -37,13 +36,13 @@ import org.keycloak.testsuite.console.page.clients.authorization.policy.GroupPol
 import org.keycloak.testsuite.console.page.clients.authorization.policy.JSPolicy;
 import org.keycloak.testsuite.console.page.clients.authorization.policy.PolicySelect;
 import org.keycloak.testsuite.console.page.clients.authorization.policy.RolePolicy;
-import org.keycloak.testsuite.console.page.clients.authorization.policy.RulePolicy;
 import org.keycloak.testsuite.console.page.clients.authorization.policy.TimePolicy;
 import org.keycloak.testsuite.console.page.clients.authorization.policy.UserPolicy;
 import org.keycloak.testsuite.console.page.fragment.ModalDialog;
 import org.keycloak.testsuite.console.page.fragment.MultipleStringSelect2;
 import org.keycloak.testsuite.console.page.fragment.SingleStringSelect2;
 import org.keycloak.testsuite.page.Form;
+import org.keycloak.testsuite.util.UIUtils;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.FindBy;
 import org.openqa.selenium.support.ui.Select;
@@ -102,14 +101,11 @@ public class ScopePermissionForm extends Form {
     private TimePolicy timePolicy;
 
     @Page
-    private RulePolicy rulePolicy;
-
-    @Page
     private GroupPolicy groupPolicy;
 
     public void populate(ScopePermissionRepresentation expected, boolean save) {
-        setInputValue(name, expected.getName());
-        setInputValue(description, expected.getDescription());
+        UIUtils.setTextInputValue(name, expected.getName());
+        UIUtils.setTextInputValue(description, expected.getDescription());
         decisionStrategy.selectByValue(expected.getDecisionStrategy().name());
 
         Set<String> resources = expected.getResources();
@@ -141,9 +137,9 @@ public class ScopePermissionForm extends Form {
     public ScopePermissionRepresentation toRepresentation() {
         ScopePermissionRepresentation representation = new ScopePermissionRepresentation();
 
-        representation.setName(getInputValue(name));
-        representation.setDescription(getInputValue(description));
-        representation.setDecisionStrategy(DecisionStrategy.valueOf(decisionStrategy.getFirstSelectedOption().getText().toUpperCase()));
+        representation.setName(UIUtils.getTextInputValue(name));
+        representation.setDescription(UIUtils.getTextInputValue(description));
+        representation.setDecisionStrategy(DecisionStrategy.valueOf(UIUtils.getTextFromElement(decisionStrategy.getFirstSelectedOption()).toUpperCase()));
         representation.setPolicies(policySelect.getSelected());
         representation.setResources(resourceSelect.getSelected());
         representation.setScopes(scopeSelect.getSelected());
@@ -172,8 +168,6 @@ public class ScopePermissionForm extends Form {
             jsPolicy.form().populate((JSPolicyRepresentation) expected, true);
         } else if ("time".equalsIgnoreCase(expected.getType())) {
             timePolicy.form().populate((TimePolicyRepresentation) expected, true);
-        } else if ("rules".equalsIgnoreCase(expected.getType())) {
-            rulePolicy.form().populate((RulePolicyRepresentation) expected, true);
         } else if ("group".equalsIgnoreCase(expected.getType())) {
             groupPolicy.form().populate((GroupPolicyRepresentation) expected, true);
         }

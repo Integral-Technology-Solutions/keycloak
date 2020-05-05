@@ -28,11 +28,11 @@ import org.keycloak.representations.idm.authorization.GroupPolicyRepresentation;
 import org.keycloak.representations.idm.authorization.JSPolicyRepresentation;
 import org.keycloak.representations.idm.authorization.Logic;
 import org.keycloak.representations.idm.authorization.RolePolicyRepresentation;
-import org.keycloak.representations.idm.authorization.RulePolicyRepresentation;
 import org.keycloak.representations.idm.authorization.TimePolicyRepresentation;
 import org.keycloak.representations.idm.authorization.UserPolicyRepresentation;
 import org.keycloak.testsuite.console.page.fragment.ModalDialog;
 import org.keycloak.testsuite.page.Form;
+import org.keycloak.testsuite.util.UIUtils;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.FindBy;
 import org.openqa.selenium.support.ui.Select;
@@ -79,14 +79,11 @@ public class AggregatePolicyForm extends Form {
     private TimePolicy timePolicy;
 
     @Page
-    private RulePolicy rulePolicy;
-
-    @Page
     private GroupPolicy groupPolicy;
 
     public void populate(AggregatePolicyRepresentation expected, boolean save) {
-        setInputValue(name, expected.getName());
-        setInputValue(description, expected.getDescription());
+        UIUtils.setTextInputValue(name, expected.getName());
+        UIUtils.setTextInputValue(description, expected.getDescription());
         logic.selectByValue(expected.getLogic().name());
 
         Set<String> selectedPolicies = policySelect.getSelected();
@@ -128,9 +125,9 @@ public class AggregatePolicyForm extends Form {
     public AggregatePolicyRepresentation toRepresentation() {
         AggregatePolicyRepresentation representation = new AggregatePolicyRepresentation();
 
-        representation.setName(getInputValue(name));
-        representation.setDescription(getInputValue(description));
-        representation.setLogic(Logic.valueOf(logic.getFirstSelectedOption().getText().toUpperCase()));
+        representation.setName(UIUtils.getTextInputValue(name));
+        representation.setDescription(UIUtils.getTextInputValue(description));
+        representation.setLogic(Logic.valueOf(UIUtils.getTextFromElement(logic.getFirstSelectedOption()).toUpperCase()));
         representation.setPolicies(policySelect.getSelected());
 
         return representation;
@@ -149,8 +146,6 @@ public class AggregatePolicyForm extends Form {
             jsPolicy.form().populate((JSPolicyRepresentation) expected, true);
         } else if ("time".equalsIgnoreCase(expected.getType())) {
             timePolicy.form().populate((TimePolicyRepresentation) expected, true);
-        } else if ("rules".equalsIgnoreCase(expected.getType())) {
-            rulePolicy.form().populate((RulePolicyRepresentation) expected, true);
         } else if ("group".equalsIgnoreCase(expected.getType())) {
             groupPolicy.form().populate((GroupPolicyRepresentation) expected, true);
         }

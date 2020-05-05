@@ -22,6 +22,7 @@ import org.keycloak.authorization.model.ResourceServer;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * A {@link ResourceStore} is responsible to manage the persistence of {@link Resource} instances.
@@ -74,6 +75,10 @@ public interface ResourceStore {
      */
     List<Resource> findByOwner(String ownerId, String resourceServerId);
 
+    void findByOwner(String ownerId, String resourceServerId, Consumer<Resource> consumer);
+
+    List<Resource> findByOwner(String ownerId, String resourceServerId, int first, int max);
+
     /**
      * Finds all {@link Resource} instances with the given uri.
      *
@@ -107,6 +112,8 @@ public interface ResourceStore {
      */
     List<Resource> findByScope(List<String> id, String resourceServerId);
 
+    void findByScope(List<String> scopes, String resourceServerId, Consumer<Resource> consumer);
+
     /**
      * Find a {@link Resource} by its name where the owner is the resource server itself.
      *
@@ -133,4 +140,38 @@ public interface ResourceStore {
      * @return a list of resources with the given type
      */
     List<Resource> findByType(String type, String resourceServerId);
+
+    /**
+     * Finds all {@link Resource} with the given type.
+     *
+     * @param type the type of the resource
+     * @param owner the resource owner or null for any resource with a given type
+     * @return a list of resources with the given type
+     */
+    List<Resource> findByType(String type, String owner, String resourceServerId);
+
+    /**
+     * Finds all {@link Resource} with the given type.
+     *
+     * @param type the type of the resource
+     * @param resourceServerId the resource server id
+     * @param consumer the result consumer
+     * @return a list of resources with the given type
+     */
+    void findByType(String type, String resourceServerId, Consumer<Resource> consumer);
+
+    /**
+     * Finds all {@link Resource} with the given type.
+     *
+     * @param type the type of the resource
+     * @param owner the resource owner or null for any resource with a given type
+     * @param resourceServerId the resource server id
+     * @param consumer the result consumer
+     * @return a list of resources with the given type
+     */
+    void findByType(String type, String owner, String resourceServerId, Consumer<Resource> consumer);
+
+    List<Resource> findByTypeInstance(String type, String resourceServerId);
+
+    void findByTypeInstance(String type, String resourceServerId, Consumer<Resource> consumer);
 }

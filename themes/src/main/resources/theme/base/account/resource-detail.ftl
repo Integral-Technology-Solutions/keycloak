@@ -57,24 +57,7 @@
     </style>
     <script>
         function removeScopeElm(elm) {
-            var td = elm.parentNode;
-            var tr = td.parentNode;
-            var tbody = tr.parentNode;
-
-            td.removeChild(elm);
-
-            var childCount = td.childNodes.length - 1;
-
-            for (i = 0; i < td.childNodes.length; i++) {
-                if (!td.childNodes[i].tagName || td.childNodes[i].tagName.toUpperCase() != 'DIV') {
-                    td.removeChild(td.childNodes[i]);
-                    childCount--;
-                }
-            }
-
-            if (childCount <= 0) {
-                tbody.removeChild(tr);
-            }
+            elm.parentNode.removeChild(elm);
         }
 
         function removeAllScopes(id) {
@@ -104,7 +87,7 @@
     <div class="row">
         <div class="col-md-10">
             <h2>
-                <a href="${url.resourceUrl}">My Resources</a> <i class="fa fa-angle-right"></i> <#if authorization.resource.displayName??>${authorization.resource.displayName}<#else>${authorization.resource.name}</#if>
+                <a href="${url.resourceUrl}">${msg("myResources")}</a> <i class="fa fa-angle-right"></i> <#if authorization.resource.displayName??>${authorization.resource.displayName}<#else>${authorization.resource.name}</#if>
             </h2>
         </div>
     </div>
@@ -138,6 +121,7 @@
                                 <form action="${url.getResourceGrant(authorization.resource.id)}" name="revokeForm-${authorization.resource.id}-${permission.requester.username}" method="post">
                                     <input type="hidden" name="action" value="revoke">
                                     <input type="hidden" name="requester" value="${permission.requester.username}">
+                                    <input type="hidden" id="stateChecker" name="stateChecker" value="${stateChecker}">
                                     <tr>
                                         <td>
                                             <#if permission.requester.email??>${permission.requester.email}<#else>${permission.requester.username}</#if>
@@ -145,7 +129,7 @@
                                         <td>
                                             <#if permission.scopes?size != 0>
                                                 <#list permission.scopes as scope>
-                                                    <#if scope.granted>
+                                                    <#if scope.granted && scope.scope??>
                                                         <div class="search-box">
                                                             <#if scope.scope.displayName??>
                                                                 ${scope.scope.displayName}
@@ -155,6 +139,8 @@
                                                             <button class="close-icon" type="button" name="removeScope-${authorization.resource.id}-${permission.requester.username}" onclick="removeScopeElm(this.parentNode);document.forms['revokeForm-${authorization.resource.id}-${permission.requester.username}'].submit();"><i class="fa fa-times" aria-hidden="true"></i></button>
                                                             <input type="hidden" name="permission_id" value="${scope.id}"/>
                                                         </div>
+                                                    <#else>
+                                                        ${msg("anyPermission")}
                                                     </#if>
                                                 </#list>
                                             <#else>
@@ -172,7 +158,7 @@
                             </#list>
                         <#else>
                             <tr>
-                                <td colspan="4">The resource is not being shared</td>
+                                <td colspan="4">${msg("resourceIsNotBeingShared")}</td>
                             </tr>
                         </#if>
                     </tbody>
@@ -203,6 +189,7 @@
                                 <form action="${url.getResourceGrant(authorization.resource.id)}" name="revokePolicyForm-${authorization.resource.id}-${permission.id}" method="post">
                                     <input type="hidden" name="action" value="revokePolicy">
                                     <input type="hidden" name="permission_id" value="${permission.id}"/>
+                                    <input type="hidden" id="stateChecker" name="stateChecker" value="${stateChecker}">
                                     <tr>
                                         <td>
                                             <#if permission.description??>
@@ -254,6 +241,7 @@
     <div class="row">
         <div class="col-md-10">
             <form action="${url.getResourceShare(authorization.resource.id)}" name="shareForm" method="post">
+                <input type="hidden" id="stateChecker" name="stateChecker" value="${stateChecker}">
                 <div class="col-sm-3 col-md-3">
                     <label for="password" class="control-label">${msg("username")} or ${msg("email")} </label> <span class="required">*</span>
                 </div>
@@ -278,7 +266,7 @@
                         </div>
                         <div class="col-md-12">
                             <br/>
-                            <a href="#" onclick="document.forms['shareForm'].submit()" type="submit" id="share-button" class="btn btn-primary">${msg("Share")}</a>
+                            <a href="#" onclick="document.forms['shareForm'].submit()" type="submit" id="share-button" class="btn btn-primary">${msg("share")}</a>
                         </div>
                     </div>
                 </div>

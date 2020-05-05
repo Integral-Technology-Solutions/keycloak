@@ -52,6 +52,7 @@
             <outputDirectory/>
             <filtered>false</filtered>
             <excludes>
+                <exclude>.installation</exclude>
                 <exclude>bin/*.sh</exclude>
                 <!-- jboss-client.jar unused  Unfortunately, this may screw up our patch process so it can't be removed.
                 <exclude>bin/client/README-EJB-JMS.txt</exclude>
@@ -89,6 +90,14 @@
             <fileMode>0755</fileMode>
         </fileSet>
         <fileSet>
+            <directory>target/${project.build.finalName}</directory>
+            <outputDirectory/>
+            <includes>
+                <include>.installation</include>
+            </includes>
+            <directoryMode>0700</directoryMode>
+        </fileSet>
+        <fileSet>
             <directory>src/main/welcome-content</directory>
             <outputDirectory>welcome-content</outputDirectory>
             <includes>
@@ -100,14 +109,6 @@
             <outputDirectory>modules</outputDirectory>
             <includes>
                 <include>layers.conf</include>
-            </includes>
-        </fileSet>
-        <fileSet>
-            <directory>target/unpacked/keycloak-client-tools</directory>
-            <outputDirectory/>
-            <filtered>false</filtered>
-            <includes>
-                <include>**/*</include>
             </includes>
         </fileSet>
         <fileSet>

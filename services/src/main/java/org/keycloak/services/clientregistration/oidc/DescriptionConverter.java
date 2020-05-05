@@ -121,6 +121,18 @@ public class DescriptionConverter {
             else configWrapper.setUseMtlsHoKToken(false);
         }
 
+        if (clientOIDC.getIdTokenSignedResponseAlg() != null) {
+            configWrapper.setIdTokenSignedResponseAlg(clientOIDC.getIdTokenSignedResponseAlg());
+        }
+
+        if (clientOIDC.getIdTokenEncryptedResponseAlg() != null) {
+            configWrapper.setIdTokenEncryptedResponseAlg(clientOIDC.getIdTokenEncryptedResponseAlg());
+        }
+
+        if (clientOIDC.getIdTokenEncryptedResponseEnc() != null) {
+            configWrapper.setIdTokenEncryptedResponseEnc(clientOIDC.getIdTokenEncryptedResponseEnc());
+        }
+
         return client;
     }
 
@@ -201,6 +213,15 @@ public class DescriptionConverter {
         } else {
             response.setTlsClientCertificateBoundAccessTokens(Boolean.FALSE);
         }
+        if (config.getIdTokenSignedResponseAlg() != null) {
+            response.setIdTokenSignedResponseAlg(config.getIdTokenSignedResponseAlg());
+        }
+        if (config.getIdTokenEncryptedResponseAlg() != null) {
+            response.setIdTokenEncryptedResponseAlg(config.getIdTokenEncryptedResponseAlg());
+        }
+        if (config.getIdTokenEncryptedResponseEnc() != null) {
+            response.setIdTokenEncryptedResponseEnc(config.getIdTokenEncryptedResponseEnc());
+        }
 
         List<ProtocolMapperRepresentation> foundPairwiseMappers = PairwiseSubMapperUtils.getPairwiseSubMappers(client);
         SubjectType subjectType = foundPairwiseMappers.isEmpty() ? SubjectType.PUBLIC : SubjectType.PAIRWISE;
@@ -245,6 +266,9 @@ public class DescriptionConverter {
         }
         if (client.isServiceAccountsEnabled()) {
             grantTypes.add(OAuth2Constants.CLIENT_CREDENTIALS);
+        }
+        if (client.getAuthorizationServicesEnabled() != null && client.getAuthorizationServicesEnabled()) {
+            grantTypes.add(OAuth2Constants.UMA_GRANT_TYPE);
         }
         grantTypes.add(OAuth2Constants.REFRESH_TOKEN);
         return grantTypes;

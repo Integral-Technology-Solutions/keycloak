@@ -33,24 +33,25 @@ import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.protocol.AbstractLoginProtocolFactory;
 import org.keycloak.protocol.LoginProtocol;
 import org.keycloak.protocol.oidc.mappers.AddressMapper;
+import org.keycloak.protocol.oidc.mappers.AllowedWebOriginsProtocolMapper;
+import org.keycloak.protocol.oidc.mappers.AudienceResolveProtocolMapper;
 import org.keycloak.protocol.oidc.mappers.FullNameMapper;
-import org.keycloak.protocol.oidc.mappers.OIDCAttributeMapperHelper;
 import org.keycloak.protocol.oidc.mappers.UserAttributeMapper;
+import org.keycloak.protocol.oidc.mappers.UserClientRoleMappingMapper;
 import org.keycloak.protocol.oidc.mappers.UserPropertyMapper;
+import org.keycloak.protocol.oidc.mappers.UserRealmRoleMappingMapper;
 import org.keycloak.protocol.oidc.mappers.UserSessionNoteMapper;
 import org.keycloak.representations.IDToken;
 import org.keycloak.representations.idm.ClientRepresentation;
-import org.keycloak.representations.idm.ClientScopeRepresentation;
 import org.keycloak.services.ServicesLogger;
 
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import static org.keycloak.models.ImpersonationSessionNote.IMPERSONATOR_ID;
+import static org.keycloak.models.ImpersonationSessionNote.IMPERSONATOR_USERNAME;
 
 /**
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
@@ -78,12 +79,24 @@ public class OIDCLoginProtocolFactory extends AbstractLoginProtocolFactory {
     public static final String ADDRESS = "address";
     public static final String PHONE_NUMBER = "phone number";
     public static final String PHONE_NUMBER_VERIFIED = "phone number verified";
+    public static final String REALM_ROLES = "realm roles";
+    public static final String CLIENT_ROLES = "client roles";
+    public static final String AUDIENCE_RESOLVE = "audience resolve";
+    public static final String ALLOWED_WEB_ORIGINS = "allowed web origins";
+    // microprofile-jwt claims
+    public static final String UPN = "upn";
+    public static final String GROUPS = "groups";
+
+    public static final String ROLES_SCOPE = "roles";
+    public static final String WEB_ORIGINS_SCOPE = "web-origins";
+    public static final String MICROPROFILE_JWT_SCOPE = "microprofile-jwt";
 
     public static final String PROFILE_SCOPE_CONSENT_TEXT = "${profileScopeConsentText}";
     public static final String EMAIL_SCOPE_CONSENT_TEXT = "${emailScopeConsentText}";
     public static final String ADDRESS_SCOPE_CONSENT_TEXT = "${addressScopeConsentText}";
     public static final String PHONE_SCOPE_CONSENT_TEXT = "${phoneScopeConsentText}";
     public static final String OFFLINE_ACCESS_SCOPE_CONSENT_TEXT = Constants.OFFLINE_ACCESS_SCOPE_CONSENT_TEXT;
+    public static final String ROLES_SCOPE_CONSENT_TEXT = "${rolesScopeConsentText}";
 
 
     @Override
@@ -155,6 +168,29 @@ public class OIDCLoginProtocolFactory extends AbstractLoginProtocolFactory {
                 KerberosConstants.GSS_DELEGATION_CREDENTIAL, "String",
                 true, false);
         builtins.put(KerberosConstants.GSS_DELEGATION_CREDENTIAL, model);
+
+        model = UserRealmRoleMappingMapper.create(null, REALM_ROLES, "realm_access.roles", true, false, true);
+        builtins.put(REALM_ROLES, model);
+
+        model = UserClientRoleMappingMapper.create(null, null, CLIENT_ROLES, "resource_access.${client_id}.roles", true, false, true);
+        builtins.put(CLIENT_ROLES, model);
+
+        model = AudienceResolveProtocolMapper.createClaimMapper(AUDIENCE_RESOLVE);
+        builtins.put(AUDIENCE_RESOLVE, model);
+
+        model = AllowedWebOriginsProtocolMapper.createClaimMapper(ALLOWED_WEB_ORIGINS);
+        builtins.put(ALLOWED_WEB_ORIGINS, model);
+
+        builtins.put(IMPERSONATOR_ID.getDisplayName(), UserSessionNoteMapper.createUserSessionNoteMapper(IMPERSONATOR_ID));
+        builtins.put(IMPERSONATOR_USERNAME.getDisplayName(), UserSessionNoteMapper.createUserSessionNoteMapper(IMPERSONATOR_USERNAME));
+
+        model = UserPropertyMapper.createClaimMapper(UPN, "username",
+                "upn", "String",
+                true, true);
+        builtins.put(UPN, model);
+
+        model = UserRealmRoleMappingMapper.create(null, GROUPS, GROUPS, true, true, true);
+        builtins.put(GROUPS, model);
     }
 
     private static void createUserAttributeMapper(String name, String attrName, String claimName, String type) {
@@ -172,6 +208,7 @@ public class OIDCLoginProtocolFactory extends AbstractLoginProtocolFactory {
         profileScope.setDescription("OpenID Connect built-in scope: profile");
         profileScope.setDisplayOnConsentScreen(true);
         profileScope.setConsentScreenText(PROFILE_SCOPE_CONSENT_TEXT);
+        profileScope.setIncludeInTokenScope(true);
         profileScope.setProtocol(getId());
         profileScope.addProtocolMapper(builtins.get(FULL_NAME));
         profileScope.addProtocolMapper(builtins.get(FAMILY_NAME));
@@ -192,6 +229,7 @@ public class OIDCLoginProtocolFactory extends AbstractLoginProtocolFactory {
         emailScope.setDescription("OpenID Connect built-in scope: email");
         emailScope.setDisplayOnConsentScreen(true);
         emailScope.setConsentScreenText(EMAIL_SCOPE_CONSENT_TEXT);
+        emailScope.setIncludeInTokenScope(true);
         emailScope.setProtocol(getId());
         emailScope.addProtocolMapper(builtins.get(EMAIL));
         emailScope.addProtocolMapper(builtins.get(EMAIL_VERIFIED));
@@ -200,6 +238,7 @@ public class OIDCLoginProtocolFactory extends AbstractLoginProtocolFactory {
         addressScope.setDescription("OpenID Connect built-in scope: address");
         addressScope.setDisplayOnConsentScreen(true);
         addressScope.setConsentScreenText(ADDRESS_SCOPE_CONSENT_TEXT);
+        addressScope.setIncludeInTokenScope(true);
         addressScope.setProtocol(getId());
         addressScope.addProtocolMapper(builtins.get(ADDRESS));
 
@@ -207,6 +246,7 @@ public class OIDCLoginProtocolFactory extends AbstractLoginProtocolFactory {
         phoneScope.setDescription("OpenID Connect built-in scope: phone");
         phoneScope.setDisplayOnConsentScreen(true);
         phoneScope.setConsentScreenText(PHONE_SCOPE_CONSENT_TEXT);
+        phoneScope.setIncludeInTokenScope(true);
         phoneScope.setProtocol(getId());
         phoneScope.addProtocolMapper(builtins.get(PHONE_NUMBER));
         phoneScope.addProtocolMapper(builtins.get(PHONE_NUMBER_VERIFIED));
@@ -224,6 +264,79 @@ public class OIDCLoginProtocolFactory extends AbstractLoginProtocolFactory {
                 DefaultClientScopes.createOfflineAccessClientScope(newRealm, offlineRole);
             }
         }
+
+        addRolesClientScope(newRealm);
+        addWebOriginsClientScope(newRealm);
+        addMicroprofileJWTClientScope(newRealm);
+    }
+
+
+    public static ClientScopeModel addRolesClientScope(RealmModel newRealm) {
+        ClientScopeModel rolesScope = KeycloakModelUtils.getClientScopeByName(newRealm, ROLES_SCOPE);
+        if (rolesScope == null) {
+            rolesScope = newRealm.addClientScope(ROLES_SCOPE);
+            rolesScope.setDescription("OpenID Connect scope for add user roles to the access token");
+            rolesScope.setDisplayOnConsentScreen(true);
+            rolesScope.setConsentScreenText(ROLES_SCOPE_CONSENT_TEXT);
+            rolesScope.setIncludeInTokenScope(false);
+            rolesScope.setProtocol(OIDCLoginProtocol.LOGIN_PROTOCOL);
+            rolesScope.addProtocolMapper(builtins.get(REALM_ROLES));
+            rolesScope.addProtocolMapper(builtins.get(CLIENT_ROLES));
+            rolesScope.addProtocolMapper(builtins.get(AUDIENCE_RESOLVE));
+
+            // 'roles' will be default client scope
+            newRealm.addDefaultClientScope(rolesScope, true);
+        } else {
+            logger.debugf("Client scope '%s' already exists in realm '%s'. Skip creating it.", ROLES_SCOPE, newRealm.getName());
+        }
+
+        return rolesScope;
+    }
+
+
+    public static ClientScopeModel addWebOriginsClientScope(RealmModel newRealm) {
+        ClientScopeModel originsScope = KeycloakModelUtils.getClientScopeByName(newRealm, WEB_ORIGINS_SCOPE);
+        if (originsScope == null) {
+            originsScope = newRealm.addClientScope(WEB_ORIGINS_SCOPE);
+            originsScope.setDescription("OpenID Connect scope for add allowed web origins to the access token");
+            originsScope.setDisplayOnConsentScreen(false); // No requesting consent from user for this. It is rather the permission of client
+            originsScope.setConsentScreenText("");
+            originsScope.setIncludeInTokenScope(false);
+            originsScope.setProtocol(OIDCLoginProtocol.LOGIN_PROTOCOL);
+            originsScope.addProtocolMapper(builtins.get(ALLOWED_WEB_ORIGINS));
+
+            // 'web-origins' will be default client scope
+            newRealm.addDefaultClientScope(originsScope, true);
+        } else {
+            logger.debugf("Client scope '%s' already exists in realm '%s'. Skip creating it.", WEB_ORIGINS_SCOPE, newRealm.getName());
+        }
+
+        return originsScope;
+    }
+
+    /**
+     * Adds the {@code microprofile-jwt} optional client scope to the specified realm. If a {@code microprofile-jwt} client scope
+     * already exists in the realm then the existing scope is returned. Otherwise, a new scope is created and returned.
+     *
+     * @param newRealm the realm to which the {@code microprofile-jwt} scope is to be added.
+     * @return a reference to the {@code microprofile-jwt} client scope that was either created or already exists in the realm.
+     */
+    public static ClientScopeModel addMicroprofileJWTClientScope(RealmModel newRealm) {
+        ClientScopeModel microprofileScope = KeycloakModelUtils.getClientScopeByName(newRealm, MICROPROFILE_JWT_SCOPE);
+        if (microprofileScope == null) {
+            microprofileScope = newRealm.addClientScope(MICROPROFILE_JWT_SCOPE);
+            microprofileScope.setDescription("Microprofile - JWT built-in scope");
+            microprofileScope.setDisplayOnConsentScreen(false);
+            microprofileScope.setIncludeInTokenScope(true);
+            microprofileScope.setProtocol(OIDCLoginProtocol.LOGIN_PROTOCOL);
+            microprofileScope.addProtocolMapper(builtins.get(UPN));
+            microprofileScope.addProtocolMapper(builtins.get(GROUPS));
+            newRealm.addDefaultClientScope(microprofileScope, false);
+        } else {
+            logger.debugf("Client scope '%s' already exists in realm '%s'. Skip creating it.", MICROPROFILE_JWT_SCOPE, newRealm.getName());
+        }
+
+        return microprofileScope;
     }
 
     @Override

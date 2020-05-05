@@ -164,7 +164,6 @@ public class ClientManager {
             // Don't use federation for service account user
             UserModel user = realmManager.getSession().userLocalStorage().addUser(client.getRealm(), username);
             user.setEnabled(true);
-            user.setEmail(username + "@placeholder.org");
             user.setServiceAccountClientLink(client.getId());
         }
 
@@ -205,12 +204,11 @@ public class ClientManager {
         if (serviceAccountUser != null) {
             String username = ServiceAccountConstants.SERVICE_ACCOUNT_USER_PREFIX + newClientId;
             serviceAccountUser.setUsername(username);
-            serviceAccountUser.setEmail(username + "@placeholder.org");
         }
     }
 
     @JsonPropertyOrder({"realm", "realm-public-key", "bearer-only", "auth-server-url", "ssl-required",
-            "resource", "public-client", "credentials",
+            "resource", "public-client", "verify-token-audience", "credentials",
             "use-resource-role-mappings"})
     public static class InstallationAdapterConfig extends BaseRealmConfig {
         @JsonProperty("resource")
@@ -223,6 +221,8 @@ public class ClientManager {
         protected Boolean publicClient;
         @JsonProperty("credentials")
         protected Map<String, Object> credentials;
+        @JsonProperty("verify-token-audience")
+        protected Boolean verifyTokenAudience;
         @JsonProperty("policy-enforcer")
         protected PolicyEnforcerConfig enforcerConfig;
 
@@ -248,6 +248,14 @@ public class ClientManager {
 
         public void setCredentials(Map<String, Object> credentials) {
             this.credentials = credentials;
+        }
+
+        public Boolean getVerifyTokenAudience() {
+            return verifyTokenAudience;
+        }
+
+        public void setVerifyTokenAudience(Boolean verifyTokenAudience) {
+            this.verifyTokenAudience = verifyTokenAudience;
         }
 
         public Boolean getPublicClient() {

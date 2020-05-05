@@ -19,6 +19,7 @@ package org.keycloak.services.migration;
 
 import org.keycloak.migration.MigrationProvider;
 import org.keycloak.models.ClaimMask;
+import org.keycloak.models.ClientScopeModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.ProtocolMapperModel;
 import org.keycloak.models.RealmModel;
@@ -81,6 +82,23 @@ public class DefaultMigrationProvider implements MigrationProvider {
     @Override
     public void setupAdminCli(RealmModel realm) {
         new RealmManager(session).setupAdminCli(realm);
+    }
+
+
+    @Override
+    public ClientScopeModel addOIDCRolesClientScope(RealmModel realm) {
+        return OIDCLoginProtocolFactory.addRolesClientScope(realm);
+    }
+
+
+    @Override
+    public ClientScopeModel addOIDCWebOriginsClientScope(RealmModel realm) {
+        return OIDCLoginProtocolFactory.addWebOriginsClientScope(realm);
+    }
+
+    @Override
+    public ClientScopeModel addOIDCMicroprofileJWTClientScope(RealmModel realm) {
+        return OIDCLoginProtocolFactory.addMicroprofileJWTClientScope(realm);
     }
 
     @Override

@@ -17,16 +17,17 @@ import org.keycloak.testsuite.adapter.AbstractServletsAdapterTest;
 import org.keycloak.testsuite.adapter.filter.AdapterActionsFilter;
 import org.keycloak.testsuite.adapter.page.OfflineToken;
 import org.keycloak.testsuite.arquillian.annotation.AppServerContainer;
-import org.keycloak.testsuite.arquillian.containers.ContainerConstants;
+import org.keycloak.testsuite.utils.arquillian.ContainerConstants;
 import org.keycloak.testsuite.pages.AccountApplicationsPage;
 import org.keycloak.testsuite.pages.LoginPage;
 import org.keycloak.testsuite.pages.OAuthGrantPage;
 import org.keycloak.testsuite.util.ClientManager;
+import org.keycloak.testsuite.utils.io.IOUtil;
 import org.keycloak.util.TokenUtil;
+import org.hamcrest.Matchers;
 import org.openqa.selenium.By;
 
 import static org.keycloak.testsuite.auth.page.AuthRealm.TEST;
-import static org.keycloak.testsuite.util.IOUtil.loadRealm;
 import static org.keycloak.testsuite.util.URLAssert.assertCurrentUrlDoesntStartWith;
 import static org.keycloak.testsuite.util.URLAssert.assertCurrentUrlStartsWith;
 import static org.keycloak.testsuite.util.WaitUtils.pause;
@@ -37,8 +38,10 @@ import static org.keycloak.testsuite.util.WaitUtils.waitUntilElement;
  */
 @AppServerContainer(ContainerConstants.APP_SERVER_UNDERTOW)
 @AppServerContainer(ContainerConstants.APP_SERVER_WILDFLY)
+@AppServerContainer(ContainerConstants.APP_SERVER_WILDFLY_DEPRECATED)
 @AppServerContainer(ContainerConstants.APP_SERVER_EAP)
 @AppServerContainer(ContainerConstants.APP_SERVER_EAP6)
+@AppServerContainer(ContainerConstants.APP_SERVER_EAP71)
 public class OfflineServletsAdapterTest extends AbstractServletsAdapterTest {
 
     @Rule
@@ -67,7 +70,7 @@ public class OfflineServletsAdapterTest extends AbstractServletsAdapterTest {
 
     @Override
     public void addAdapterTestRealms(List<RealmRepresentation> testRealms) {
-        testRealms.add(loadRealm("/adapter-test/offline-client/offlinerealm.json"));
+        testRealms.add(IOUtil.loadRealm("/adapter-test/offline-client/offlinerealm.json"));
     }
 
     @Test
@@ -179,8 +182,8 @@ public class OfflineServletsAdapterTest extends AbstractServletsAdapterTest {
 
         accountAppPage.open();
         AccountApplicationsPage.AppEntry offlineClient = accountAppPage.getApplications().get("offline-client");
-        Assert.assertTrue(offlineClient.getClientScopesGranted().contains(OAuthGrantPage.OFFLINE_ACCESS_CONSENT_TEXT));
-        Assert.assertTrue(offlineClient.getAdditionalGrants().contains("Offline Token"));
+        Assert.assertThat(offlineClient.getClientScopesGranted(), Matchers.hasItem(OAuthGrantPage.OFFLINE_ACCESS_CONSENT_TEXT));
+        Assert.assertThat(offlineClient.getAdditionalGrants(), Matchers.hasItem("Offline Token"));
 
         //This was necessary to be introduced, otherwise other testcases will fail
         offlineTokenPage.logout();

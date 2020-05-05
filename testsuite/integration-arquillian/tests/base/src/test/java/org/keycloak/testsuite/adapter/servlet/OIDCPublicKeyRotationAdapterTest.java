@@ -42,7 +42,7 @@ import org.keycloak.common.util.MultivaluedHashMap;
 import org.keycloak.common.util.StreamUtil;
 import org.keycloak.common.util.Time;
 import org.keycloak.constants.AdapterConstants;
-import org.keycloak.jose.jws.AlgorithmType;
+import org.keycloak.crypto.Algorithm;
 import org.keycloak.keys.KeyProvider;
 import org.keycloak.protocol.oidc.OIDCAdvancedConfigWrapper;
 import org.keycloak.protocol.oidc.OIDCLoginProtocolService;
@@ -59,7 +59,7 @@ import org.keycloak.testsuite.adapter.page.SecurePortal;
 import org.keycloak.testsuite.adapter.page.TokenMinTTLPage;
 import org.keycloak.testsuite.admin.ApiUtil;
 import org.keycloak.testsuite.arquillian.annotation.AppServerContainer;
-import org.keycloak.testsuite.arquillian.containers.ContainerConstants;
+import org.keycloak.testsuite.utils.arquillian.ContainerConstants;
 import org.keycloak.testsuite.util.URLAssert;
 import org.openqa.selenium.By;
 
@@ -80,8 +80,10 @@ import static org.keycloak.testsuite.util.WaitUtils.waitUntilElement;
  */
 @AppServerContainer(ContainerConstants.APP_SERVER_UNDERTOW)
 @AppServerContainer(ContainerConstants.APP_SERVER_WILDFLY)
+@AppServerContainer(ContainerConstants.APP_SERVER_WILDFLY_DEPRECATED)
 @AppServerContainer(ContainerConstants.APP_SERVER_EAP)
 @AppServerContainer(ContainerConstants.APP_SERVER_EAP6)
+@AppServerContainer(ContainerConstants.APP_SERVER_EAP71)
 public class OIDCPublicKeyRotationAdapterTest extends AbstractServletsAdapterTest {
 
     @Page
@@ -134,7 +136,7 @@ public class OIDCPublicKeyRotationAdapterTest extends AbstractServletsAdapterTes
 
         // Try to login again. It should fail now because not yet allowed to download new keys
         tokenMinTTLPage.navigateTo();
-        testRealmLoginPage.form().waitForUsernameInputPresent();
+        assertTrue(testRealmLoginPage.form().isUsernamePresent());
         assertCurrentUrlStartsWithLoginUrlOf(testRealmPage);
         testRealmLoginPage.form().login("bburke@redhat.com", "password");
         URLAssert.assertCurrentUrlStartsWith(tokenMinTTLPage.getInjectedUrl().toString());
@@ -234,6 +236,10 @@ public class OIDCPublicKeyRotationAdapterTest extends AbstractServletsAdapterTes
     @Test
     public void testPublicKeyCacheInvalidatedWhenPushedNotBefore() {
         driver.manage().timeouts().pageLoadTimeout(1000, TimeUnit.SECONDS);
+        String customerDBUnsecuredUrl = customerDb.getUriBuilder().clone().path("unsecured").path("foo").build().toASCIIString();
+        String customerDBUrlNoTrailSlash = customerDb.getUriBuilder().build().toASCIIString();
+        customerDBUrlNoTrailSlash = customerDBUrlNoTrailSlash.substring(0, customerDBUrlNoTrailSlash.length() - 1);
+        String tokenMinTTLUnsecuredUrl = tokenMinTTLPage.getUriBuilder().clone().path("unsecured").path("foo").build().toASCIIString();
 
         // increase accessTokenLifespan to 1200
         RealmRepresentation demoRealm = adminClient.realm(DEMO).toRepresentation();
@@ -257,21 +263,21 @@ public class OIDCPublicKeyRotationAdapterTest extends AbstractServletsAdapterTes
         adminClient.realm(DEMO).components().component(oldActiveKeyProviderId).remove();
 
         // Set some offset to ensure pushing notBefore will pass
-        setAdapterAndServerTimeOffset(130, customerDb.toString() + "/unsecured/foo", tokenMinTTLPage.toString() + "/unsecured/foo");
+        setAdapterAndServerTimeOffset(130, customerDBUnsecuredUrl, tokenMinTTLUnsecuredUrl);
 
         // Send notBefore policy from the realm
         demoRealm.setNotBefore(Time.currentTime() - 1);
         adminClient.realm(DEMO).update(demoRealm);
         GlobalRequestResult result = adminClient.realm(DEMO).pushRevocation();
-        Assert.assertTrue(result.getSuccessRequests().contains(customerDb.toString()));
+        Assert.assertTrue(result.getSuccessRequests().contains(customerDBUrlNoTrailSlash));
 
         // Send REST request. New request to the publicKey cache should be sent, and key is no longer returned as token contains the old kid
         status = invokeRESTEndpoint(accessTokenString);
         Assert.assertEquals(401, status);
 
         // Revert public keys change and time offset
-        resetKeycloakDeploymentForAdapter(customerDb.toString() + "/unsecured/foo");
-        resetKeycloakDeploymentForAdapter(tokenMinTTLPage.toString() + "/unsecured/foo");
+        resetKeycloakDeploymentForAdapter(customerDBUnsecuredUrl);
+        resetKeycloakDeploymentForAdapter(tokenMinTTLUnsecuredUrl);
     }
 
 
@@ -279,7 +285,7 @@ public class OIDCPublicKeyRotationAdapterTest extends AbstractServletsAdapterTes
 
     private void loginToTokenMinTtlApp() {
         tokenMinTTLPage.navigateTo();
-        testRealmLoginPage.form().waitForUsernameInputPresent();
+        assertTrue(testRealmLoginPage.form().isUsernamePresent());
         assertCurrentUrlStartsWithLoginUrlOf(testRealmPage);
         testRealmLoginPage.form().login("bburke@redhat.com", "password");
         assertCurrentUrlEquals(tokenMinTTLPage);
@@ -306,7 +312,7 @@ public class OIDCPublicKeyRotationAdapterTest extends AbstractServletsAdapterTes
 
     private String getActiveKeyProvider() {
         KeysMetadataRepresentation keyMetadata = adminClient.realm(DEMO).keys().getKeyMetadata();
-        String activeKid = keyMetadata.getActive().get(AlgorithmType.RSA.name());
+        String activeKid = keyMetadata.getActive().get(Algorithm.RS256);
         for (KeysMetadataRepresentation.KeyMetadataRepresentation rep : keyMetadata.getKeys()) {
             if (rep.getKid().equals(activeKid)) {
                 return rep.getProviderId();

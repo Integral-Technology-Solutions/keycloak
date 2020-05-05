@@ -37,7 +37,6 @@ import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.services.ServicesLogger;
 import org.keycloak.services.Urls;
-import org.keycloak.services.managers.ClientSessionCode;
 import org.keycloak.services.messages.Messages;
 import org.keycloak.sessions.AuthenticationSessionCompoundId;
 import org.keycloak.sessions.AuthenticationSessionModel;
@@ -131,7 +130,7 @@ public class IdpEmailVerificationAuthenticator extends AbstractIdpAuthenticator 
         String authSessionEncodedId = AuthenticationSessionCompoundId.fromAuthSession(authSession).getEncodedId();
         IdpVerifyAccountLinkActionToken token = new IdpVerifyAccountLinkActionToken(
           existingUser.getId(), absoluteExpirationInSecs, authSessionEncodedId,
-          brokerContext.getUsername(), brokerContext.getIdpConfig().getAlias()
+          brokerContext.getUsername(), brokerContext.getIdpConfig().getAlias(), authSession.getClient().getClientId()
         );
         UriBuilder builder = Urls.actionTokenBuilder(uriInfo.getBaseUri(), token.serialize(session, realm, uriInfo),
                 authSession.getClient().getClientId(), authSession.getTabId());

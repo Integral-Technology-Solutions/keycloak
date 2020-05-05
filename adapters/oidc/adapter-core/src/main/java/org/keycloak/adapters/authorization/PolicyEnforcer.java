@@ -21,7 +21,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -131,11 +130,8 @@ public class PolicyEnforcer {
     }
 
     private void loadClaimInformationPointProviders(ServiceLoader<ClaimInformationPointProviderFactory> loader) {
-        Iterator<ClaimInformationPointProviderFactory> iterator = loader.iterator();
 
-        while (iterator.hasNext()) {
-            ClaimInformationPointProviderFactory factory = iterator.next();
-
+        for (ClaimInformationPointProviderFactory factory : loader) {
             factory.init(this);
 
             claimInformationPointProviderFactories.put(factory.getName(), factory);
@@ -143,7 +139,7 @@ public class PolicyEnforcer {
     }
 
     private Map<String, PathConfig> configurePaths(ProtectedResource protectedResource, PolicyEnforcerConfig enforcerConfig) {
-        boolean loadPathsFromServer = true;
+        boolean loadPathsFromServer = !enforcerConfig.getLazyLoadPaths();
 
         for (PathConfig pathConfig : enforcerConfig.getPaths()) {
             if (!PolicyEnforcerConfig.EnforcementMode.DISABLED.equals(pathConfig.getEnforcementMode())) {
@@ -225,9 +221,10 @@ public class PolicyEnforcer {
             for (String id : protectedResource.findAll()) {
                 ResourceRepresentation resourceDescription = protectedResource.findById(id);
 
-                if (resourceDescription.getUri() != null) {
-                    PathConfig pathConfig = PathConfig.createPathConfig(resourceDescription);
-                    paths.put(pathConfig.getPath(), pathConfig);
+                if (resourceDescription.getUris() != null && !resourceDescription.getUris().isEmpty()) {
+                    for(PathConfig pathConfig : PathConfig.createPathConfigs(resourceDescription)) {
+                        paths.put(pathConfig.getPath(), pathConfig);
+                    }
                 }
             }
         }
@@ -271,7 +268,21 @@ public class PolicyEnforcer {
                         List<ResourceRepresentation> matchingResources = authzClient.protection().resource().findByMatchingUri(targetUri);
 
                         if (!matchingResources.isEmpty()) {
-                            pathConfig = PathConfig.createPathConfig(matchingResources.get(0));
+                            Map<String, Map<String, Object>> cipConfig = null;
+                            PolicyEnforcerConfig.EnforcementMode enforcementMode = PolicyEnforcerConfig.EnforcementMode.ENFORCING;
+
+                            if (pathConfig != null) {
+                                cipConfig = pathConfig.getClaimInformationPointConfig();
+                                enforcementMode = pathConfig.getEnforcementMode();
+                            }
+
+                            pathConfig = PathConfig.createPathConfigs(matchingResources.get(0)).iterator().next();
+
+                            if (cipConfig != null) {
+                                pathConfig.setClaimInformationPointConfig(cipConfig);
+                            }
+                            
+                            pathConfig.setEnforcementMode(enforcementMode);
                         }
                     } catch (Exception cause) {
                         LOGGER.errorf(cause, "Could not lazy load resource with path [" + targetUri + "] from server");
@@ -295,6 +306,10 @@ public class PolicyEnforcer {
             return paths.values();
         }
 
+        public PathCache getPathCache() {
+            return pathCache;
+        }
+
         @Override
         protected PathConfig resolvePathConfig(PathConfig originalConfig, String path) {
             if (originalConfig.hasPattern()) {
@@ -313,7 +328,7 @@ public class PolicyEnforcer {
 
                 if (!search.isEmpty()) {
                     ResourceRepresentation targetResource = search.get(0);
-                    PathConfig config = PathConfig.createPathConfig(targetResource);
+                    PathConfig config = PathConfig.createPathConfigs(targetResource).iterator().next();
 
                     config.setScopes(originalConfig.getScopes());
                     config.setMethods(originalConfig.getMethods());

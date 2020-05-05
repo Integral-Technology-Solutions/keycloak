@@ -24,6 +24,7 @@ import org.keycloak.models.ProtocolMapperModel;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.RoleContainerModel;
 import org.keycloak.models.RoleModel;
+import org.keycloak.models.jpa.entities.ClientScopeAttributeEntity;
 import org.keycloak.models.jpa.entities.ClientScopeEntity;
 import org.keycloak.models.jpa.entities.ClientScopeRoleMappingEntity;
 import org.keycloak.models.jpa.entities.ProtocolMapperEntity;
@@ -34,9 +35,11 @@ import javax.persistence.EntityManager;
 import javax.persistence.TypedQuery;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import javax.persistence.LockModeType;
 
 /**
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
@@ -254,6 +257,7 @@ public class ClientScopeAdapter implements ClientScopeModel, JpaModel<ClientScop
     @Override
     public void deleteScopeMapping(RoleModel role) {
         TypedQuery<ClientScopeRoleMappingEntity> query = getRealmScopeMappingQuery(role);
+        query.setLockMode(LockModeType.PESSIMISTIC_WRITE);
         List<ClientScopeRoleMappingEntity> results = query.getResultList();
         if (results.size() == 0) return;
         for (ClientScopeRoleMappingEntity entity : results) {
@@ -282,18 +286,37 @@ public class ClientScopeAdapter implements ClientScopeModel, JpaModel<ClientScop
 
     @Override
     public void setAttribute(String name, String value) {
-        entity.getAttributes().put(name, value);
+        for (ClientScopeAttributeEntity attr : entity.getAttributes()) {
+            if (attr.getName().equals(name)) {
+                attr.setValue(value);
+                return;
+            }
+        }
+
+        ClientScopeAttributeEntity attr = new ClientScopeAttributeEntity();
+        attr.setName(name);
+        attr.setValue(value);
+        attr.setClientScope(entity);
+        em.persist(attr);
+        entity.getAttributes().add(attr);
 
     }
 
     @Override
     public void removeAttribute(String name) {
-        entity.getAttributes().remove(name);
+        Iterator<ClientScopeAttributeEntity> it = entity.getAttributes().iterator();
+        while (it.hasNext()) {
+            ClientScopeAttributeEntity attr = it.next();
+            if (attr.getName().equals(name)) {
+                it.remove();
+                em.remove(attr);
+            }
+        }
     }
 
     @Override
     public String getAttribute(String name) {
-        return entity.getAttributes().get(name);
+        return getAttributes().get(name);
     }
 
     public static ClientScopeEntity toClientScopeEntity(ClientScopeModel model, EntityManager em) {
@@ -305,9 +328,11 @@ public class ClientScopeAdapter implements ClientScopeModel, JpaModel<ClientScop
 
     @Override
     public Map<String, String> getAttributes() {
-        Map<String, String> copy = new HashMap<>();
-        copy.putAll(entity.getAttributes());
-        return copy;
+        Map<String, String> attrs = new HashMap<>();
+        for (ClientScopeAttributeEntity attr : entity.getAttributes()) {
+            attrs.put(attr.getName(), attr.getValue());
+        }
+        return attrs;
     }
 
 

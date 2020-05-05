@@ -106,7 +106,10 @@ public class AuthenticatedActionsHandler {
         if (deployment.getPolicyEnforcer() != null) {
             if (exposeHeaders != null) {
                 exposeHeaders += ",";
+            } else {
+                exposeHeaders = "";
             }
+
             exposeHeaders += "WWW-Authenticate";
         }
 
@@ -115,15 +118,14 @@ public class AuthenticatedActionsHandler {
         if (securityContext != null && origin != null && !origin.equals(requestOrigin)) {
             AccessToken token = securityContext.getToken();
             Set<String> allowedOrigins = token.getAllowedOrigins();
-            if (log.isDebugEnabled()) {
-                for (String a : allowedOrigins) log.debug("   " + a);
-            }
+
+            log.debugf("Allowed origins in token: %s", allowedOrigins);
+
             if (allowedOrigins == null || (!allowedOrigins.contains("*") && !allowedOrigins.contains(origin))) {
                 if (allowedOrigins == null) {
                     log.debugv("allowedOrigins was null in token");
                 } else {
                     log.debugv("allowedOrigins did not contain origin");
-
                 }
                 facade.getResponse().sendError(403);
                 facade.getResponse().end();
@@ -137,7 +139,7 @@ public class AuthenticatedActionsHandler {
                 facade.getResponse().setHeader(CorsHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, exposeHeaders);
             }
         } else {
-            log.debugv("cors validation not needed as we're not a secure session or origin header was null: {0}", facade.getRequest().getURI());
+            log.debugv("cors validation not needed as we are not a secure session or origin header was null: {0}", facade.getRequest().getURI());
         }
         return false;
     }
@@ -156,11 +158,9 @@ public class AuthenticatedActionsHandler {
 
             if (session != null) {
                 session.setAuthorizationContext(authorizationContext);
-
-                return authorizationContext.isGranted();
             }
 
-            return true;
+            return authorizationContext.isGranted();
         } catch (Exception e) {
             throw new RuntimeException("Failed to enforce policy decisions.", e);
         }

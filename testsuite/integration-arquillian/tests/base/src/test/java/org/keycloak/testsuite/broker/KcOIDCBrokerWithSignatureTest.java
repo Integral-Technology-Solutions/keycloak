@@ -17,8 +17,6 @@
 
 package org.keycloak.testsuite.broker;
 
-import java.util.List;
-
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriBuilder;
 
@@ -28,10 +26,10 @@ import org.junit.Test;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.common.util.*;
 import org.keycloak.connections.infinispan.InfinispanConnectionProvider;
+import org.keycloak.crypto.Algorithm;
 import org.keycloak.keys.KeyProvider;
 import org.keycloak.keys.PublicKeyStorageUtils;
 import org.keycloak.protocol.oidc.OIDCLoginProtocolService;
-import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.ComponentRepresentation;
 import org.keycloak.representations.idm.IdentityProviderRepresentation;
 import org.keycloak.representations.idm.KeysMetadataRepresentation;
@@ -85,27 +83,7 @@ public class KcOIDCBrokerWithSignatureTest extends AbstractBaseBrokerTest {
 
     @Before
     public void addClients() {
-        List<ClientRepresentation> clients = bc.createProviderClients(suiteContext);
-        if (clients != null) {
-            RealmResource providerRealm = adminClient.realm(bc.providerRealmName());
-            for (ClientRepresentation client : clients) {
-                log.debug("adding client " + client.getClientId() + " to realm " + bc.providerRealmName());
-
-                Response resp = providerRealm.clients().create(client);
-                resp.close();
-            }
-        }
-
-        clients = bc.createConsumerClients(suiteContext);
-        if (clients != null) {
-            RealmResource consumerRealm = adminClient.realm(bc.consumerRealmName());
-            for (ClientRepresentation client : clients) {
-                log.debug("adding client " + client.getClientId() + " to realm " + bc.consumerRealmName());
-
-                Response resp = consumerRealm.clients().create(client);
-                resp.close();
-            }
-        }
+        addClientsToProviderAndConsumer();
     }
 
 
@@ -278,7 +256,7 @@ public class KcOIDCBrokerWithSignatureTest extends AbstractBaseBrokerTest {
 
         // Update identityProvider to some bad JWKS_URL
         OIDCIdentityProviderConfigRep cfg = new OIDCIdentityProviderConfigRep(idpRep);
-        cfg.setJwksUrl("http://localhost:43214/non-existent");
+        cfg.setJwksUrl("https://localhost:43214/non-existent");
         updateIdentityProvider(idpRep);
 
         // Check that key is not cached anymore
@@ -293,7 +271,7 @@ public class KcOIDCBrokerWithSignatureTest extends AbstractBaseBrokerTest {
 
 
     private void rotateKeys() {
-        String activeKid = providerRealm().keys().getKeyMetadata().getActive().get("RSA");
+        String activeKid = providerRealm().keys().getKeyMetadata().getActive().get(Algorithm.RS256);
 
         // Rotate public keys on the parent broker
         String realmId = providerRealm().toRepresentation().getId();
@@ -308,7 +286,7 @@ public class KcOIDCBrokerWithSignatureTest extends AbstractBaseBrokerTest {
         assertEquals(201, response.getStatus());
         response.close();
 
-        String updatedActiveKid = providerRealm().keys().getKeyMetadata().getActive().get("RSA");
+        String updatedActiveKid = providerRealm().keys().getKeyMetadata().getActive().get(Algorithm.RS256);
         assertNotEquals(activeKid, updatedActiveKid);
     }
 

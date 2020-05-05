@@ -16,21 +16,24 @@
  */
 package org.keycloak.testsuite.forms;
 
-import org.keycloak.admin.client.resource.ClientResource;
+import org.hamcrest.Matchers;
+import org.jboss.arquillian.drone.api.annotation.Drone;
+import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.authentication.actiontoken.resetcred.ResetCredentialsActionToken;
 import org.jboss.arquillian.graphene.page.Page;
+import org.keycloak.common.constants.ServiceAccountConstants;
 import org.keycloak.events.Details;
 import org.keycloak.events.Errors;
 import org.keycloak.events.EventType;
 import org.keycloak.models.Constants;
 import org.keycloak.models.utils.SystemClientUtil;
-import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.EventRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.testsuite.AssertEvents;
 import org.keycloak.testsuite.AbstractTestRealmKeycloakTest;
 import org.keycloak.testsuite.admin.ApiUtil;
+import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude;
 import org.keycloak.testsuite.pages.AppPage;
 import org.keycloak.testsuite.pages.AppPage.RequestType;
 import org.keycloak.testsuite.pages.ErrorPage;
@@ -43,6 +46,8 @@ import org.keycloak.testsuite.updaters.ClientAttributeUpdater;
 import org.keycloak.testsuite.util.GreenMailRule;
 import org.keycloak.testsuite.util.MailUtils;
 import org.keycloak.testsuite.util.OAuthClient;
+import org.keycloak.testsuite.util.RealmBuilder;
+import org.keycloak.testsuite.util.SecondBrowser;
 import org.keycloak.testsuite.util.UserActionTokenBuilder;
 import org.keycloak.testsuite.util.UserBuilder;
 
@@ -57,23 +62,36 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.*;
+import org.openqa.selenium.By;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
 
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.*;
+import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude.AuthServer;
 
 /**
  * @author <a href="mailto:sthorger@redhat.com">Stian Thorgersen</a>
  * @author Stan Silvert ssilvert@redhat.com (C) 2016 Red Hat Inc.
  */
+@AuthServerContainerExclude(AuthServer.REMOTE)
 public class ResetPasswordTest extends AbstractTestRealmKeycloakTest {
 
     private String userId;
 
+    @Drone
+    @SecondBrowser
+    protected WebDriver driver2;
+
     @Override
     public void configureTestRealm(RealmRepresentation testRealm) {
+        RealmBuilder.edit(testRealm)
+                .client(org.keycloak.testsuite.util.ClientBuilder.create().clientId("client-user").serviceAccount());
     }
 
     @Before
     public void setup() {
+        log.info("Adding login-test user");
         UserRepresentation user = UserBuilder.create()
                 .username("login-test")
                 .email("login@test.com")
@@ -182,7 +200,7 @@ public class ResetPasswordTest extends AbstractTestRealmKeycloakTest {
         String changePasswordUrl = resetPassword("login-test");
         events.clear();
 
-        assertSecondPasswordResetFails(changePasswordUrl, null); // KC_RESTART doesn't exists, it was deleted after first successful reset-password flow was finished
+        assertSecondPasswordResetFails(changePasswordUrl, oauth.getClientId()); // KC_RESTART doesn't exists, it was deleted after first successful reset-password flow was finished
     }
 
     @Test
@@ -194,7 +212,7 @@ public class ResetPasswordTest extends AbstractTestRealmKeycloakTest {
         driver.navigate().to(resetUri); // This is necessary to delete KC_RESTART cookie that is restricted to /auth/realms/test path
         driver.manage().deleteAllCookies();
 
-        assertSecondPasswordResetFails(changePasswordUrl, null);
+        assertSecondPasswordResetFails(changePasswordUrl, oauth.getClientId());
     }
 
     public void assertSecondPasswordResetFails(String changePasswordUrl, String clientId) {
@@ -204,7 +222,7 @@ public class ResetPasswordTest extends AbstractTestRealmKeycloakTest {
         assertEquals("Action expired. Please continue with login now.", errorPage.getError());
 
         events.expect(EventType.RESET_PASSWORD)
-          .client("account")
+          .client(clientId)
           .session((String) null)
           .user(userId)
           .error(Errors.EXPIRED_CODE)
@@ -999,10 +1017,8 @@ public class ResetPasswordTest extends AbstractTestRealmKeycloakTest {
     // KEYCLOAK-5982
     @Test
     public void resetPasswordLinkOpenedInNewBrowserAndAccountClientRenamed() throws IOException, MessagingException {
-        ClientResource accountClient = ApiUtil.findClientByClientId(adminClient.realm("test"), Constants.ACCOUNT_MANAGEMENT_CLIENT_ID);
-
         // Temporarily rename client "account" . Revert it back after the test
-        try (Closeable accountClientUpdater = new ClientAttributeUpdater(accountClient)
+        try (Closeable accountClientUpdater = ClientAttributeUpdater.forClient(adminClient, "test", Constants.ACCOUNT_MANAGEMENT_CLIENT_ID)
                 .setClientId("account-changed")
                 .update()) {
 
@@ -1012,4 +1028,60 @@ public class ResetPasswordTest extends AbstractTestRealmKeycloakTest {
         }
     }
 
+    @Test
+    public void resetPasswordLinkNewBrowserSessionPreserveClient() throws IOException, MessagingException {
+        loginPage.open();
+        loginPage.resetPassword();
+
+        resetPasswordPage.assertCurrent();
+
+        resetPasswordPage.changePassword("login-test");
+
+        loginPage.assertCurrent();
+        assertEquals("You should receive an email shortly with further instructions.", loginPage.getSuccessMessage());
+
+        assertEquals(1, greenMail.getReceivedMessages().length);
+
+        MimeMessage message = greenMail.getReceivedMessages()[0];
+
+        String changePasswordUrl = MailUtils.getPasswordResetEmailLink(message);
+
+        driver2.navigate().to(changePasswordUrl.trim());
+
+        final WebElement newPassword = driver2.findElement(By.id("password-new"));
+        newPassword.sendKeys("resetPassword");
+        final WebElement confirmPassword = driver2.findElement(By.id("password-confirm"));
+        confirmPassword.sendKeys("resetPassword");
+        final WebElement submit = driver2.findElement(By.cssSelector("input[type=\"submit\"]"));
+        submit.click();
+
+        assertThat(driver2.getCurrentUrl(), Matchers.containsString("client_id=test-app"));
+
+        assertThat(driver2.getPageSource(), Matchers.containsString("Your account has been updated."));
+    }
+
+    @Test
+    public void failResetPasswordServiceAccount() {
+        String username = ServiceAccountConstants.SERVICE_ACCOUNT_USER_PREFIX + "client-user";
+        UserRepresentation serviceAccount = testRealm().users()
+                .search(username).get(0);
+
+        serviceAccount.toString();
+
+        UserResource serviceAccount1 = testRealm().users().get(serviceAccount.getId());
+
+        serviceAccount = serviceAccount1.toRepresentation();
+        serviceAccount.setEmail("client-user@test.com");
+        serviceAccount1.update(serviceAccount);
+        
+        String resetUri = oauth.AUTH_SERVER_ROOT + "/realms/test/login-actions/reset-credentials";
+        driver.navigate().to(resetUri);
+
+        resetPasswordPage.assertCurrent();
+
+        resetPasswordPage.changePassword(username);
+
+        loginPage.assertCurrent();
+        assertEquals("Invalid username or password.", errorPage.getError());
+    }
 }

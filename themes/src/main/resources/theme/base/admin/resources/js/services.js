@@ -194,7 +194,84 @@ module.factory('Notifications', function($rootScope, $timeout) {
 
 module.factory('ComponentUtils', function() {
 
+    function sortGroups(prop, arr) {
+        // sort current elements
+        arr.sort(function (a, b) {
+            if (a[prop] < b[prop]) { return -1; }
+            if (a[prop] > b[prop]) { return 1; }
+            return 0;
+        });
+        // check sub groups
+        arr.forEach(function (item, index) {
+            if (!!item.subGroups) {
+                sortGroups(prop, item.subGroups);
+            }
+        });
+        return arr;
+    };
+
     var utils = {};
+
+    utils.sortGroups = sortGroups;
+
+    utils.findIndexById = function(array, id) {
+        for (var i = 0; i < array.length; i++) {
+            if (array[i].id === id) return i;
+        }
+        return -1;
+    }
+
+    utils.convertAllMultivaluedStringValuesToList = function(properties, config) {
+        if (!properties) {
+            return;
+        }
+
+        for (var i=0 ; i<properties.length ; i++) {
+            var prop = properties[i];
+            if (prop.type === 'MultivaluedString') {
+                var configProperty = config[prop.name];
+
+                if (configProperty == null) {
+                    configProperty = [];
+                    config[prop.name] = configProperty;
+                }
+
+                if (typeof configProperty === "string") {
+                    configProperty = configProperty.split("##");
+                    config[prop.name] = configProperty;
+                }
+            }
+        }
+    }
+
+    utils.convertAllListValuesToMultivaluedString = function(properties, config) {
+        if (!properties) {
+            return;
+        }
+
+        for (var i=0 ; i<properties.length ; i++) {
+            var prop = properties[i];
+            if (prop.type === 'MultivaluedString') {
+                var configVal = config[prop.name];
+
+                if (configVal != null) {
+                    if (configVal.length > 0) {
+                        var lastVal = configVal[configVal.length - 1];
+                        if (lastVal === '') {
+                            console.log('Remove empty value from config property: ' + prop.name);
+                            configVal.splice(configVal.length - 1, 1);
+                        }
+                    }
+
+                    var attrVals = configVal.join("##");
+                    config[prop.name] = attrVals;
+
+                }
+            }
+        }
+    }
+
+
 
     utils.addLastEmptyValueToMultivaluedLists = function(properties, config) {
         if (!properties) {
@@ -232,24 +309,24 @@ module.factory('ComponentUtils', function() {
             }
         }
     }
-    
+
     // Allows you to use ui-select2 with <input> tag.
     // In HTML you will then use property.mvOptions like this:
     // <input ui-select2="prop.mvOptions" ng-model="...
     utils.addMvOptionsToMultivaluedLists = function(properties) {
         if (!properties) return;
-        
+
         for (var i=0 ; i<properties.length ; i++) {
             var prop = properties[i];
             if (prop.type !== 'MultivaluedList') continue;
-            
+
             prop.mvOptions = {
                 'multiple' : true,
                 'simple_tags' : true,
                 'tags' : angular.copy(prop.options)
             }
         }
-        
+
     }
 
     return utils;
@@ -323,6 +400,20 @@ module.factory('RequiredActions', function($resource) {
     });
 });
 
+module.factory('RequiredActionRaisePriority', function($resource) {
+    return $resource(authUrl + '/admin/realms/:realm/authentication/required-actions/:alias/raise-priority', {
+        realm : '@realm',
+        alias : '@alias'
+    });
+});
+
+module.factory('RequiredActionLowerPriority', function($resource) {
+    return $resource(authUrl + '/admin/realms/:realm/authentication/required-actions/:alias/lower-priority', {
+        realm : '@realm',
+        alias : '@alias'
+    });
+});
+
 module.factory('UnregisteredRequiredActions', function($resource) {
     return $resource(authUrl + '/admin/realms/:realm/authentication/unregistered-required-actions', {
         realm : '@realm'
@@ -335,18 +426,15 @@ module.factory('RegisterRequiredAction', function($resource) {
     });
 });
 
-module.factory('RealmLDAPConnectionTester', function($resource) {
-    return $resource(authUrl + '/admin/realms/:realm/testLDAPConnection');
+module.factory('RealmLDAPConnectionTester', function($resource, $httpParamSerializer) {
+    return $resource(authUrl + '/admin/realms/:realm/testLDAPConnection', {
+        realm : '@realm'
+    });
 });
 
-module.factory('RealmSMTPConnectionTester', function($resource) {
-    return $resource(authUrl + '/admin/realms/:realm/testSMTPConnection/:config', {
-        realm : '@realm',
-        config : '@config'
-    }, {
-        send: {
-            method: 'POST'
-        }
+module.factory('RealmSMTPConnectionTester', function($resource, $httpParamSerializer) {
+    return $resource(authUrl + '/admin/realms/:realm/testSMTPConnection', {
+        realm : '@realm'
     });
 });
 
@@ -456,6 +544,15 @@ module.service('UserSearchState', function() {
     };
 });
 
+module.service('ClientListSearchState', function() {
+    this.isFirstSearch = true;
+    this.query = {
+        max : 20,
+        first : 0,
+        search: true
+    };
+});
+
 // Service tracks the last flow selected in Authentication-->Flows tab
 module.service('LastFlowSelected', function() {
     this.alias = null;
@@ -541,6 +638,38 @@ module.factory('UserImpersonation', function($resource) {
 module.factory('UserCredentials', function($resource) {
     var credentials = {};
 
+    credentials.getCredentials = $resource(authUrl + '/admin/realms/:realm/users/:userId/credentials', {
+        realm : '@realm',
+        userId : '@userId'
+    }).query;
+
+    credentials.getConfiguredUserStorageCredentialTypes = $resource(authUrl + '/admin/realms/:realm/users/:userId/configured-user-storage-credential-types', {
+        realm : '@realm',
+        userId : '@userId'
+    }).query;
+
+    credentials.deleteCredential = $resource(authUrl + '/admin/realms/:realm/users/:userId/credentials/:credentialId', {
+        realm : '@realm',
+        userId : '@userId',
+        credentialId : '@credentialId'
+    }).delete;
+
+    credentials.updateCredentialLabel = $resource(authUrl + '/admin/realms/:realm/users/:userId/credentials/:credentialId/userLabel', {
+        realm : '@realm',
+        userId : '@userId',
+        credentialId : '@credentialId'
+    }, {
+        update : {
+            method : 'PUT',
+            headers: {
+                'Content-Type': 'text/plain;charset=utf-8'
+            },
+            transformRequest: function(credential, getHeaders) {
+                return credential.userLabel;
+            }
+        }
+    }).update;
+
     credentials.resetPassword = $resource(authUrl + '/admin/realms/:realm/users/:userId/reset-password', {
         realm : '@realm',
         userId : '@userId'
@@ -565,6 +694,27 @@ module.factory('UserCredentials', function($resource) {
     }, {
         update : {
             method : 'PUT'
+        }
+    }).update;
+
+    credentials.moveCredentialAfter = $resource(authUrl + '/admin/realms/:realm/users/:userId/credentials/:credentialId/moveAfter/:newPreviousCredentialId', {
+        realm : '@realm',
+        userId : '@userId',
+        credentialId : '@credentialId',
+        newPreviousCredentialId : '@newPreviousCredentialId'
+    }, {
+        update : {
+            method : 'POST'
+        }
+    }).update;
+
+    credentials.moveToFirst = $resource(authUrl + '/admin/realms/:realm/users/:userId/credentials/:credentialId/moveToFirst', {
+        realm : '@realm',
+        userId : '@userId',
+        credentialId : '@credentialId'
+    }, {
+        update : {
+            method : 'POST'
         }
     }).update;
 
@@ -734,11 +884,32 @@ module.factory('RoleClientComposites', function($resource) {
     });
 });
 
+function clientSelectControl($scope, realm, Client) {
+    $scope.clientsUiSelect = {
+        minimumInputLength: 1,
+        delay: 500,
+        allowClear: true,
+        query: function (query) {
+            var data = {results: []};
+            if ('' == query.term.trim()) {
+                query.callback(data);
+                return;
+            }
+            Client.query({realm: realm, search: true, clientId: query.term.trim(), max: 20}, function(response) {
+                data.results = response;
+                query.callback(data);
+            });
+        },
+        formatResult: function(object, container, query) {
+            object.text = object.clientId;
+            return object.clientId;
+        }
+    };
+}
 
-function roleControl($scope, realm, role, roles, clients,
-                     ClientRole, RoleById, RoleRealmComposites, RoleClientComposites,
-                     $http, $location, Notifications, Dialog) {
-
+function roleControl($scope, $route, realm, role, roles, Client,
+            ClientRole, RoleById, RoleRealmComposites, RoleClientComposites,
+            $http, $location, Notifications, Dialog, ComponentUtils) {
     $scope.$watch(function () {
         return $location.path();
     }, function () {
@@ -775,7 +946,6 @@ function roleControl($scope, realm, role, roles, clients,
     $scope.selectedRealmRoles = [];
     $scope.selectedRealmMappings = [];
     $scope.realmMappings = [];
-    $scope.clients = clients;
     $scope.clientRoles = [];
     $scope.selectedClientRoles = [];
     $scope.selectedClientMappings = [];
@@ -789,6 +959,11 @@ function roleControl($scope, realm, role, roles, clients,
             break;
         }
     }
+
+
+    clientSelectControl($scope, $route.current.params.realm, Client);
+    
+    $scope.selectedClient = null;
 
 
     $scope.realmMappings = RoleRealmComposites.query({realm : realm.realm, role : role.id}, function(){
@@ -809,76 +984,90 @@ function roleControl($scope, realm, role, roles, clients,
 
     $scope.addRealmRole = function() {
         $scope.compositeSwitchDisabled=true;
+        $scope.selectedRealmRolesToAdd = JSON.parse('[' + $scope.selectedRealmRoles + ']');
         $http.post(authUrl + '/admin/realms/' + realm.realm + '/roles-by-id/' + role.id + '/composites',
-            $scope.selectedRealmRoles).then(function() {
-            for (var i = 0; i < $scope.selectedRealmRoles.length; i++) {
-                var role = $scope.selectedRealmRoles[i];
-                var idx = $scope.realmRoles.indexOf($scope.selectedRealmRoles[i]);
+            $scope.selectedRealmRolesToAdd).then(function() {
+            for (var i = 0; i < $scope.selectedRealmRolesToAdd.length; i++) {
+                var role = $scope.selectedRealmRolesToAdd[i];
+                var idx = ComponentUtils.findIndexById($scope.realmRoles, role.id);
                 if (idx != -1) {
                     $scope.realmRoles.splice(idx, 1);
                     $scope.realmMappings.push(role);
                 }
             }
             $scope.selectedRealmRoles = [];
+            $scope.selectedRealmRolesToAdd = [];
             Notifications.success("Role added to composite.");
         });
     };
 
     $scope.deleteRealmRole = function() {
         $scope.compositeSwitchDisabled=true;
+        $scope.selectedRealmMappingsToRemove = JSON.parse('[' + $scope.selectedRealmMappings + ']');
         $http.delete(authUrl + '/admin/realms/' + realm.realm + '/roles-by-id/' + role.id + '/composites',
-            {data : $scope.selectedRealmMappings, headers : {"content-type" : "application/json"}}).then(function() {
-            for (var i = 0; i < $scope.selectedRealmMappings.length; i++) {
-                var role = $scope.selectedRealmMappings[i];
-                var idx = $scope.realmMappings.indexOf($scope.selectedRealmMappings[i]);
+            {data : $scope.selectedRealmMappingsToRemove, headers : {"content-type" : "application/json"}}).then(function() {
+            for (var i = 0; i < $scope.selectedRealmMappingsToRemove.length; i++) {
+                var role = $scope.selectedRealmMappingsToRemove[i];
+                var idx = ComponentUtils.findIndexById($scope.realmMappings, role.id);
                 if (idx != -1) {
                     $scope.realmMappings.splice(idx, 1);
                     $scope.realmRoles.push(role);
                 }
             }
             $scope.selectedRealmMappings = [];
+            $scope.selectedRealmMappingsToRemove = [];
             Notifications.success("Role removed from composite.");
         });
     };
 
     $scope.addClientRole = function() {
         $scope.compositeSwitchDisabled=true;
+        $scope.selectedClientRolesToAdd = JSON.parse('[' + $scope.selectedClientRoles + ']');
         $http.post(authUrl + '/admin/realms/' + realm.realm + '/roles-by-id/' + role.id + '/composites',
-            $scope.selectedClientRoles).then(function() {
-            for (var i = 0; i < $scope.selectedClientRoles.length; i++) {
-                var role = $scope.selectedClientRoles[i];
-                var idx = $scope.clientRoles.indexOf($scope.selectedClientRoles[i]);
+            $scope.selectedClientRolesToAdd).then(function() {
+            for (var i = 0; i < $scope.selectedClientRolesToAdd.length; i++) {
+                var role = $scope.selectedClientRolesToAdd[i];
+                var idx = ComponentUtils.findIndexById($scope.clientRoles, role.id);
                 if (idx != -1) {
                     $scope.clientRoles.splice(idx, 1);
                     $scope.clientMappings.push(role);
                 }
             }
             $scope.selectedClientRoles = [];
+            $scope.selectedClientRolesToAdd = [];
             Notifications.success("Client role added.");
         });
     };
 
     $scope.deleteClientRole = function() {
         $scope.compositeSwitchDisabled=true;
+        $scope.selectedClientMappingsToRemove = JSON.parse('[' + $scope.selectedClientMappings + ']');
         $http.delete(authUrl + '/admin/realms/' + realm.realm + '/roles-by-id/' + role.id + '/composites',
-            {data : $scope.selectedClientMappings, headers : {"content-type" : "application/json"}}).then(function() {
-            for (var i = 0; i < $scope.selectedClientMappings.length; i++) {
-                var role = $scope.selectedClientMappings[i];
-                var idx = $scope.clientMappings.indexOf($scope.selectedClientMappings[i]);
+            {data : $scope.selectedClientMappingsToRemove, headers : {"content-type" : "application/json"}}).then(function() {
+            for (var i = 0; i < $scope.selectedClientMappingsToRemove.length; i++) {
+                var role = $scope.selectedClientMappingsToRemove[i];
+                var idx = ComponentUtils.findIndexById($scope.clientMappings, role.id);
                 if (idx != -1) {
                     $scope.clientMappings.splice(idx, 1);
                     $scope.clientRoles.push(role);
                 }
             }
             $scope.selectedClientMappings = [];
+            $scope.selectedClientMappingsToRemove = [];
             Notifications.success("Client role removed.");
         });
     };
 
 
-    $scope.changeClient = function() {
-        $scope.clientRoles = ClientRole.query({realm : realm.realm, client : $scope.compositeClient.id}, function() {
-                $scope.clientMappings = RoleClientComposites.query({realm : realm.realm, role : role.id, client : $scope.compositeClient.id}, function(){
+    $scope.changeClient = function(client) {
+        console.log("selected client: ", client);
+        if (!client || !client.id) {
+            $scope.selectedClient = null;
+            return;
+        }
+        $scope.selectedClient = client;
+        $scope.clientRoles = ClientRole.query({realm : realm.realm, client : client.id}, function() {
+                $scope.clientMappings = RoleClientComposites.query({realm : realm.realm, role : role.id, client : client.id}, function(){
                     for (var i = 0; i < $scope.clientMappings.length; i++) {
                         var role = $scope.clientMappings[i];
                         for (var j = 0; j < $scope.clientRoles.length; j++) {
@@ -1373,23 +1562,29 @@ module.factory('TimeUnit2', function() {
     var t = {};
 
     t.asUnit = function(time) {
-        var unit = 'Minutes';
-        if (time) {
-            if (time < 60) {
-                time = 60;
-            }
 
-            if (time % 60 == 0) {
-                unit = 'Minutes';
-                time = time / 60;
-            }
-            if (time % 60 == 0) {
-                unit = 'Hours';
-                time = time / 60;
-            }
-            if (time % 24 == 0) {
-                unit = 'Days'
-                time = time / 24;
+        var unit = 'Minutes';
+
+        if (time) {
+            if (time == -1) {
+                time = -1;
+            } else {
+                if (time < 60) {
+                    time = 60;
+                }
+
+                if (time % 60 == 0) {
+                    unit = 'Minutes';
+                    time = time / 60;
+                }
+                if (time % 60 == 0) {
+                    unit = 'Hours';
+                    time = time / 60;
+                }
+                if (time % 24 == 0) {
+                    unit = 'Days'
+                    time = time / 24;
+                }
             }
         }
 
@@ -1791,6 +1986,12 @@ module.factory('GroupMembership', function($resource) {
     });
 });
 
+module.factory('RoleList', function($resource) {
+    return $resource(authUrl + '/admin/realms/:realm/roles', {
+        realm : '@realm'
+    });
+});
+
 module.factory('RoleMembership', function($resource) {
     return $resource(authUrl + '/admin/realms/:realm/roles/:role/users', {
         realm : '@realm',
@@ -1798,6 +1999,20 @@ module.factory('RoleMembership', function($resource) {
     });
 });
 
+module.factory('ClientRoleList', function($resource) {
+    return $resource(authUrl + '/admin/realms/:realm/clients/:client/roles', {
+        realm : '@realm',
+        client : '@client'
+    });
+});
+
+module.factory('ClientRoleMembership', function($resource) {
+    return $resource(authUrl + '/admin/realms/:realm/clients/:client/roles/:role/users', {
+        realm : '@realm',
+        client : '@client',
+        role : '@role'
+    });
+});
 
 module.factory('UserGroupMembership', function($resource) {
     return $resource(authUrl + '/admin/realms/:realm/users/:userId/groups', {
@@ -1913,5 +2128,19 @@ module.factory('LDAPMapperSync', function($resource) {
 });
 
 
-
-
+module.factory('UserGroupMembershipCount', function($resource) {
+    return $resource(authUrl + '/admin/realms/:realm/users/:userId/groups/count', {
+            realm : '@realm',
+            userId : '@userId'
+        },
+        {
+            query: {
+                isArray: false,
+                method: 'GET',
+                params: {},
+                transformResponse: function (data) {
+                    return angular.fromJson(data)
+                }
+            }
+        });
+});

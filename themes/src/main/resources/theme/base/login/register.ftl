@@ -42,7 +42,7 @@
             </div>
           </#if>
 
-            <#if passwordRequired>
+            <#if passwordRequired??>
             <div class="${properties.kcFormGroupClass!} ${messagesPerField.printIfExists('password',properties.kcFormGroupErrorClass!)}">
                 <div class="${properties.kcLabelWrapperClass!}">
                     <label for="password" class="${properties.kcLabelClass!}">${msg("password")}</label>
@@ -73,7 +73,7 @@
             <div class="${properties.kcFormGroupClass!}">
                 <div id="kc-form-options" class="${properties.kcFormOptionsClass!}">
                     <div class="${properties.kcFormOptionsWrapperClass!}">
-                        <span><a href="${url.loginUrl}">${msg("backToLogin")?no_esc}</a></span>
+                        <span><a href="${url.loginUrl}">${kcSanitize(msg("backToLogin"))?no_esc}</a></span>
                     </div>
                 </div>
 

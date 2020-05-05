@@ -24,6 +24,7 @@ import org.keycloak.authorization.admin.AuthorizationService;
 import org.keycloak.common.ClientConnection;
 import org.keycloak.common.Profile;
 import org.keycloak.common.util.Time;
+import org.keycloak.events.Errors;
 import org.keycloak.events.admin.OperationType;
 import org.keycloak.events.admin.ResourceType;
 import org.keycloak.models.AuthenticatedClientSessionModel;
@@ -63,6 +64,7 @@ import org.keycloak.services.validation.ClientValidator;
 import org.keycloak.services.validation.PairwiseClientValidator;
 import org.keycloak.services.validation.ValidationMessages;
 import org.keycloak.utils.ProfileHelper;
+import org.keycloak.validation.ClientValidationUtil;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
@@ -77,7 +79,6 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriInfo;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -86,6 +87,7 @@ import java.util.Map;
 import java.util.Properties;
 
 import static java.lang.Boolean.TRUE;
+import org.keycloak.utils.ReservedCharValidator;
 
 
 /**
@@ -102,9 +104,6 @@ public class ClientResource {
     private AdminEventBuilder adminEvent;
     protected ClientModel client;
     protected KeycloakSession session;
-
-    @Context
-    protected UriInfo uriInfo;
 
     @Context
     protected KeycloakApplication keycloak;
@@ -155,11 +154,16 @@ public class ClientResource {
 
         try {
             updateClientFromRep(rep, client, session);
-            adminEvent.operation(OperationType.UPDATE).resourcePath(uriInfo).representation(rep).success();
-            updateAuthorizationSettings(rep);
+
+            ClientValidationUtil.validate(session, client, false, c -> {
+                session.getTransactionManager().setRollbackOnly();
+                throw new ErrorResponseException(Errors.INVALID_INPUT ,c.getError(), Response.Status.BAD_REQUEST);
+            });
+
+            adminEvent.operation(OperationType.UPDATE).resourcePath(session.getContext().getUri()).representation(rep).success();
             return Response.noContent().build();
         } catch (ModelDuplicateException e) {
-            return ErrorResponse.exists("Client " + rep.getClientId() + " already exists");
+            return ErrorResponse.exists("Client already exists");
         }
     }
 
@@ -174,11 +178,8 @@ public class ClientResource {
     public ClientRepresentation getClient() {
         auth.clients().requireView(client);
 
-        ClientRepresentation representation = ModelToRepresentation.toRepresentation(client);
+        ClientRepresentation representation = ModelToRepresentation.toRepresentation(client, session);
 
-        if (Profile.isFeatureEnabled(Profile.Feature.AUTHORIZATION)) {
-            representation.setAuthorizationServicesEnabled(authorization().isEnabled());
-        }
         representation.setAccess(auth.clients().getAccess(client));
 
         return representation;
@@ -203,7 +204,7 @@ public class ClientResource {
 
         ClientInstallationProvider provider = session.getProvider(ClientInstallationProvider.class, providerId);
         if (provider == null) throw new NotFoundException("Unknown Provider");
-        return provider.generateInstallation(session, realm, client, keycloak.getBaseUri(uriInfo));
+        return provider.generateInstallation(session, realm, client, session.getContext().getUri().getBaseUri());
     }
 
     /**
@@ -220,7 +221,7 @@ public class ClientResource {
         }
 
         new ClientManager(new RealmManager(session)).removeClient(realm, client);
-        adminEvent.operation(OperationType.DELETE).resourcePath(uriInfo).success();
+        adminEvent.operation(OperationType.DELETE).resourcePath(session.getContext().getUri()).success();
     }
 
 
@@ -239,7 +240,7 @@ public class ClientResource {
         logger.debug("regenerateSecret");
         UserCredentialModel cred = KeycloakModelUtils.generateSecret(client);
         CredentialRepresentation rep = ModelToRepresentation.toRepresentation(cred);
-        adminEvent.operation(OperationType.ACTION).resourcePath(uriInfo).representation(rep).success();
+        adminEvent.operation(OperationType.ACTION).resourcePath(session.getContext().getUri()).representation(rep).success();
         return rep;
     }
 
@@ -255,12 +256,12 @@ public class ClientResource {
     public ClientRepresentation regenerateRegistrationAccessToken() {
         auth.clients().requireManage(client);
 
-        String token = ClientRegistrationTokenUtils.updateRegistrationAccessToken(session, realm, uriInfo, client, RegistrationAuth.AUTHENTICATED);
+        String token = ClientRegistrationTokenUtils.updateRegistrationAccessToken(session, realm, client, RegistrationAuth.AUTHENTICATED);
 
-        ClientRepresentation rep = ModelToRepresentation.toRepresentation(client);
+        ClientRepresentation rep = ModelToRepresentation.toRepresentation(client, session);
         rep.setRegistrationAccessToken(token);
 
-        adminEvent.operation(OperationType.ACTION).resourcePath(uriInfo).representation(rep).success();
+        adminEvent.operation(OperationType.ACTION).resourcePath(session.getContext().getUri()).representation(rep).success();
         return rep;
     }
 
@@ -296,7 +297,7 @@ public class ClientResource {
 
     @Path("roles")
     public RoleContainerResource getRoleContainerResource() {
-        return new RoleContainerResource(session, uriInfo, realm, auth, client, adminEvent);
+        return new RoleContainerResource(session, session.getContext().getUri(), realm, auth, client, adminEvent);
     }
 
 
@@ -339,11 +340,11 @@ public class ClientResource {
 
         ClientScopeModel clientScope = realm.getClientScopeById(clientScopeId);
         if (clientScope == null) {
-            throw new org.jboss.resteasy.spi.NotFoundException("Client scope not found");
+            throw new javax.ws.rs.NotFoundException("Client scope not found");
         }
         client.addClientScope(clientScope, defaultScope);
 
-        adminEvent.operation(OperationType.CREATE).resource(ResourceType.CLIENT).resourcePath(uriInfo).success();
+        adminEvent.operation(OperationType.CREATE).resource(ResourceType.CLIENT).resourcePath(session.getContext().getUri()).success();
     }
 
 
@@ -355,11 +356,11 @@ public class ClientResource {
 
         ClientScopeModel clientScope = realm.getClientScopeById(clientScopeId);
         if (clientScope == null) {
-            throw new org.jboss.resteasy.spi.NotFoundException("Client scope not found");
+            throw new javax.ws.rs.NotFoundException("Client scope not found");
         }
         client.removeClientScope(clientScope);
 
-        adminEvent.operation(OperationType.DELETE).resource(ResourceType.CLIENT).resourcePath(uriInfo).success();
+        adminEvent.operation(OperationType.DELETE).resource(ResourceType.CLIENT).resourcePath(session.getContext().getUri()).success();
     }
 
 
@@ -392,7 +393,7 @@ public class ClientResource {
 
     @Path("evaluate-scopes")
     public ClientScopeEvaluateResource clientScopeEvaluateResource() {
-        return new ClientScopeEvaluateResource(session, uriInfo, realm, auth, client, clientConnection);
+        return new ClientScopeEvaluateResource(session, session.getContext().getUri(), realm, auth, client, clientConnection);
     }
 
     /**
@@ -431,8 +432,8 @@ public class ClientResource {
     public GlobalRequestResult pushRevocation() {
         auth.clients().requireConfigure(client);
 
-        adminEvent.operation(OperationType.ACTION).resourcePath(uriInfo).resource(ResourceType.CLIENT).success();
-        return new ResourceAdminManager(session).pushClientRevocationPolicy(uriInfo.getRequestUri(), realm, client);
+        adminEvent.operation(OperationType.ACTION).resourcePath(session.getContext().getUri()).resource(ResourceType.CLIENT).success();
+        return new ResourceAdminManager(session).pushClientRevocationPolicy(realm, client);
 
     }
 
@@ -565,9 +566,12 @@ public class ClientResource {
         if (node == null) {
             throw new BadRequestException("Node not found in params");
         }
+        
+        ReservedCharValidator.validate(node);
+        
         if (logger.isDebugEnabled()) logger.debug("Register node: " + node);
         client.registerNode(node, Time.currentTime());
-        adminEvent.operation(OperationType.CREATE).resource(ResourceType.CLUSTER_NODE).resourcePath(uriInfo, node).success();
+        adminEvent.operation(OperationType.CREATE).resource(ResourceType.CLUSTER_NODE).resourcePath(session.getContext().getUri(), node).success();
     }
 
     /**
@@ -588,7 +592,7 @@ public class ClientResource {
             throw new NotFoundException("Client does not have node ");
         }
         client.unregisterNode(node);
-        adminEvent.operation(OperationType.DELETE).resource(ResourceType.CLUSTER_NODE).resourcePath(uriInfo).success();
+        adminEvent.operation(OperationType.DELETE).resource(ResourceType.CLUSTER_NODE).resourcePath(session.getContext().getUri()).success();
     }
 
     /**
@@ -606,15 +610,13 @@ public class ClientResource {
         auth.clients().requireConfigure(client);
 
         logger.debug("Test availability of cluster nodes");
-        GlobalRequestResult result = new ResourceAdminManager(session).testNodesAvailability(uriInfo.getRequestUri(), realm, client);
-        adminEvent.operation(OperationType.ACTION).resource(ResourceType.CLUSTER_NODE).resourcePath(uriInfo).representation(result).success();
+        GlobalRequestResult result = new ResourceAdminManager(session).testNodesAvailability(realm, client);
+        adminEvent.operation(OperationType.ACTION).resource(ResourceType.CLUSTER_NODE).resourcePath(session.getContext().getUri()).representation(result).success();
         return result;
     }
 
     @Path("/authz")
     public AuthorizationService authorization() {
-        ProfileHelper.requireFeature(Profile.Feature.AUTHORIZATION);
-
         AuthorizationService resource = new AuthorizationService(this.session, this.client, this.auth, adminEvent);
 
         ResteasyProviderFactory.getInstance().injectProperties(resource);
@@ -686,7 +688,7 @@ public class ClientResource {
             }
         }
 
-        if (!rep.getClientId().equals(client.getClientId())) {
+        if (rep.getClientId() != null && !rep.getClientId().equals(client.getClientId())) {
             new ClientManager(new RealmManager(session)).clientIdChanged(client, rep.getClientId());
         }
 
@@ -694,16 +696,20 @@ public class ClientResource {
             auth.clients().requireManage(client);
         }
 
+        if ((rep.isBearerOnly() != null && rep.isBearerOnly()) || (rep.isPublicClient() != null && rep.isPublicClient())) {
+            rep.setAuthorizationServicesEnabled(false);
+        }
+
         RepresentationToModel.updateClient(rep, client);
+        RepresentationToModel.updateClientProtocolMappers(rep, client);
+        updateAuthorizationSettings(rep);
     }
 
     private void updateAuthorizationSettings(ClientRepresentation rep) {
-        if (Profile.isFeatureEnabled(Profile.Feature.AUTHORIZATION)) {
-            if (TRUE.equals(rep.getAuthorizationServicesEnabled())) {
-                authorization().enable(false);
-            } else {
-                authorization().disable();
-            }
+        if (TRUE.equals(rep.getAuthorizationServicesEnabled())) {
+            authorization().enable(false);
+        } else {
+            authorization().disable();
         }
     }
 }

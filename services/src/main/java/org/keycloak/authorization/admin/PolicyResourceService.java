@@ -26,10 +26,9 @@ import javax.ws.rs.GET;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
-import javax.ws.rs.core.Context;
+import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
-import javax.ws.rs.core.UriInfo;
 
 import org.jboss.resteasy.annotations.cache.NoCache;
 import org.keycloak.authorization.AuthorizationProvider;
@@ -40,6 +39,7 @@ import org.keycloak.authorization.store.PolicyStore;
 import org.keycloak.authorization.store.StoreFactory;
 import org.keycloak.events.admin.OperationType;
 import org.keycloak.events.admin.ResourceType;
+import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.utils.ModelToRepresentation;
 import org.keycloak.models.utils.RepresentationToModel;
 import org.keycloak.representations.idm.authorization.AbstractPolicyRepresentation;
@@ -73,7 +73,7 @@ public class PolicyResourceService {
     @Consumes("application/json")
     @Produces("application/json")
     @NoCache
-    public Response update(@Context UriInfo uriInfo, String payload) {
+    public Response update(String payload) {
         if (auth != null) {
             this.auth.realm().requireManageAuthorization();
         }
@@ -89,13 +89,13 @@ public class PolicyResourceService {
         RepresentationToModel.toModel(representation, authorization, policy);
 
 
-        audit(uriInfo, representation, OperationType.UPDATE);
+        audit(representation, OperationType.UPDATE);
 
         return Response.status(Status.CREATED).build();
     }
 
     @DELETE
-    public Response delete(@Context UriInfo uriInfo) {
+    public Response delete() {
         if (auth != null) {
             this.auth.realm().requireManageAuthorization();
         }
@@ -108,13 +108,13 @@ public class PolicyResourceService {
         PolicyStore policyStore = storeFactory.getPolicyStore();
         PolicyProviderFactory resource = getProviderFactory(policy.getType());
 
-        resource.onRemove(policy, authorization);
+        if (resource != null) {
+            resource.onRemove(policy, authorization);
+        }
 
         policyStore.delete(policy.getId());
 
-        if (authorization.getRealm().isAdminEventsEnabled()) {
-            audit(uriInfo, toRepresentation(policy, authorization), OperationType.DELETE);
-        }
+        audit(toRepresentation(policy, authorization), OperationType.DELETE);
 
         return Response.noContent().build();
     }
@@ -122,7 +122,7 @@ public class PolicyResourceService {
     @GET
     @Produces("application/json")
     @NoCache
-    public Response findById() {
+    public Response findById(@QueryParam("fields") String fields) {
         if (auth != null) {
             this.auth.realm().requireViewAuthorization();
         }
@@ -131,11 +131,15 @@ public class PolicyResourceService {
             return Response.status(Status.NOT_FOUND).build();
         }
 
-        return Response.ok(toRepresentation(policy, authorization)).build();
+        return Response.ok(toRepresentation(policy, fields, authorization)).build();
     }
 
-    protected AbstractPolicyRepresentation toRepresentation(Policy policy, AuthorizationProvider authorization) {
-        return ModelToRepresentation.toRepresentation(policy, authorization, true, false);
+    private AbstractPolicyRepresentation toRepresentation(Policy policy, AuthorizationProvider authorization) {
+        return toRepresentation(policy, null, authorization);
+    }
+
+    protected AbstractPolicyRepresentation toRepresentation(Policy policy, String fields, AuthorizationProvider authorization) {
+        return ModelToRepresentation.toRepresentation(policy, authorization, true, false, fields != null && fields.equals("*"));
     }
 
     @Path("/dependentPolicies")
@@ -255,9 +259,7 @@ public class PolicyResourceService {
         return policy;
     }
 
-    private void audit(@Context UriInfo uriInfo, AbstractPolicyRepresentation policy, OperationType operation) {
-        if (authorization.getRealm().isAdminEventsEnabled()) {
-            adminEvent.operation(operation).resourcePath(uriInfo).representation(policy).success();
-        }
+    private void audit(AbstractPolicyRepresentation policy, OperationType operation) {
+        adminEvent.operation(operation).resourcePath(authorization.getKeycloakSession().getContext().getUri()).representation(policy).success();
     }
 }

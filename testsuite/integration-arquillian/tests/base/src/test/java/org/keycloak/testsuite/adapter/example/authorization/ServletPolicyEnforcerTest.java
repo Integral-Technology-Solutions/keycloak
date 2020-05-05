@@ -18,8 +18,9 @@ package org.keycloak.testsuite.adapter.example.authorization;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-import static org.keycloak.testsuite.util.IOUtil.loadRealm;
-import static org.keycloak.testsuite.util.WaitUtils.pause;
+import static org.keycloak.common.Profile.Feature.UPLOAD_SCRIPTS;
+import static org.keycloak.testsuite.util.WaitUtils.waitForPageToLoad;
+import static org.keycloak.testsuite.utils.io.IOUtil.loadRealm;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -45,23 +46,28 @@ import org.keycloak.representations.idm.authorization.ResourceRepresentation;
 import org.keycloak.testsuite.ProfileAssume;
 import org.keycloak.testsuite.adapter.AbstractExampleAdapterTest;
 import org.keycloak.testsuite.arquillian.annotation.AppServerContainer;
-import org.keycloak.testsuite.arquillian.containers.ContainerConstants;
-import org.keycloak.testsuite.util.WaitUtils;
+import org.keycloak.testsuite.arquillian.annotation.EnableFeature;
+import org.keycloak.testsuite.utils.arquillian.ContainerConstants;
+import org.keycloak.testsuite.util.UIUtils;
 import org.openqa.selenium.By;
 
 /**
  * @author <a href="mailto:psilva@redhat.com">Pedro Igor</a>
  */
 @AppServerContainer(ContainerConstants.APP_SERVER_WILDFLY)
+@AppServerContainer(ContainerConstants.APP_SERVER_WILDFLY_DEPRECATED)
 @AppServerContainer(ContainerConstants.APP_SERVER_EAP)
 @AppServerContainer(ContainerConstants.APP_SERVER_EAP6)
+@AppServerContainer(ContainerConstants.APP_SERVER_UNDERTOW)
+@AppServerContainer(ContainerConstants.APP_SERVER_EAP71)
+@AppServerContainer(ContainerConstants.APP_SERVER_TOMCAT7)
+@AppServerContainer(ContainerConstants.APP_SERVER_TOMCAT8)
+@AppServerContainer(ContainerConstants.APP_SERVER_TOMCAT9)
+@EnableFeature(value = UPLOAD_SCRIPTS, skipRestart = true)
 public class ServletPolicyEnforcerTest extends AbstractExampleAdapterTest {
 
     protected static final String REALM_NAME = "servlet-policy-enforcer-authz";
     protected static final String RESOURCE_SERVER_ID = "servlet-policy-enforcer";
-
-    @BeforeClass
-    public static void enabled() { ProfileAssume.assumePreview(); }
 
     @ArquillianResource
     private Deployer deployer;
@@ -450,6 +456,78 @@ public class ServletPolicyEnforcerTest extends AbstractExampleAdapterTest {
         });
     }
 
+    @Test
+    public void testMultipleUriForResourceJSONConfig() {
+        performTests(() -> {
+            login("alice", "alice");
+            navigateTo("/keycloak-7269/sub-resource1");
+            assertFalse(wasDenied());
+            navigateTo("/keycloak-7269/sub-resource1/whatever/specialSuffix");
+            assertFalse(wasDenied());
+            navigateTo("/keycloak-7269/sub-resource2");
+            assertFalse(wasDenied());
+            navigateTo("/keycloak-7269/sub-resource2/w/h/a/t/e/v/e/r");
+            assertFalse(wasDenied());
+
+            updatePermissionPolicies("Pattern 16 Permission", "Deny Policy");
+
+            login("alice", "alice");
+            navigateTo("/keycloak-7269/sub-resource1");
+            assertTrue(wasDenied());
+            navigateTo("/keycloak-7269/sub-resource1/whatever/specialSuffix");
+            assertTrue(wasDenied());
+            navigateTo("/keycloak-7269/sub-resource2");
+            assertTrue(wasDenied());
+            navigateTo("/keycloak-7269/sub-resource2/w/h/a/t/e/v/e/r");
+            assertTrue(wasDenied());
+
+            updatePermissionPolicies("Pattern 16 Permission", "Default Policy");
+            navigateTo("/keycloak-7269/sub-resource1");
+            assertFalse(wasDenied());
+            navigateTo("/keycloak-7269/sub-resource1/whatever/specialSuffix");
+            assertFalse(wasDenied());
+            navigateTo("/keycloak-7269/sub-resource2");
+            assertFalse(wasDenied());
+            navigateTo("/keycloak-7269/sub-resource2/w/h/a/t/e/v/e/r");
+            assertFalse(wasDenied());
+        });
+    }
+
+    @Test
+    public void testOverloadedTemplateUri() {
+        performTests(() -> {
+            login("alice", "alice");
+            navigateTo("/keycloak-8823/resource/v1/subresource/123/entities");
+            assertFalse(wasDenied());
+            navigateTo("/keycloak-8823/resource/v1/subresource/123/someother");
+            assertFalse(wasDenied());
+            
+            updatePermissionPolicies("Pattern 17 Entities Permission", "Deny Policy");
+            
+            login("alice", "alice");
+            navigateTo("/keycloak-8823/resource/v1/subresource/123/entities");
+            assertTrue(wasDenied());
+            navigateTo("/keycloak-8823/resource/v1/subresource/123/someother");
+            assertFalse(wasDenied());
+            
+            updatePermissionPolicies("Pattern 17 Entities Permission", "Default Policy");
+            updatePermissionPolicies("Pattern 17 Permission", "Deny Policy");
+            login("alice", "alice");
+            navigateTo("/keycloak-8823/resource/v1/subresource/123/entities");
+            assertFalse(wasDenied());
+            navigateTo("/keycloak-8823/resource/v1/subresource/123/someother");
+            assertTrue(wasDenied());
+            
+            updatePermissionPolicies("Pattern 17 Entities Permission", "Default Policy");
+            updatePermissionPolicies("Pattern 17 Permission", "Default Policy");
+            login("alice", "alice");
+            navigateTo("/keycloak-8823/resource/v1/subresource/123/entities");
+            assertFalse(wasDenied());
+            navigateTo("/keycloak-8823/resource/v1/subresource/123/someother");
+            assertFalse(wasDenied());
+        });
+    }
+
     private void navigateTo(String path) {
         this.driver.navigate().to(getResourceServerUrl() + path);
     }
@@ -484,10 +562,7 @@ public class ServletPolicyEnforcerTest extends AbstractExampleAdapterTest {
 
     private void logOut() {
         navigateTo();
-        By by = By.xpath("//a[text() = 'Sign Out']");
-        WaitUtils.waitUntilElement(by);
-        this.driver.findElement(by).click();
-        pause(500);
+        UIUtils.clickLink(driver.findElement(By.xpath("//a[text() = 'Sign Out']")));
     }
 
     private  void login(String username, String password) {
@@ -506,8 +581,8 @@ public class ServletPolicyEnforcerTest extends AbstractExampleAdapterTest {
     }
 
     private void navigateTo() {
-        this.driver.navigate().to(getResourceServerUrl());
-        WaitUtils.waitUntilElement(By.xpath("//p[text() = 'Welcome']"));
+        this.driver.navigate().to(getResourceServerUrl() + "/");
+        waitForPageToLoad();
     }
 
     private boolean wasDenied() {

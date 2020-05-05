@@ -17,8 +17,6 @@
 
 package org.keycloak.models.utils;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import java.io.IOException;
 import org.keycloak.authorization.AuthorizationProvider;
 import org.keycloak.authorization.model.PermissionTicket;
 import org.keycloak.authorization.model.Policy;
@@ -34,21 +32,72 @@ import org.keycloak.events.Event;
 import org.keycloak.events.admin.AdminEvent;
 import org.keycloak.events.admin.AuthDetails;
 import org.keycloak.models.*;
+import org.keycloak.models.credential.OTPCredentialModel;
 import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.representations.idm.*;
 import org.keycloak.representations.idm.authorization.*;
 import org.keycloak.storage.StorageId;
-import org.keycloak.util.JsonSerialization;
 
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
  * @version $Revision: 1 $
  */
 public class ModelToRepresentation {
+
+    public static Set<String> REALM_EXCLUDED_ATTRIBUTES = new HashSet<>();
+    static {
+        REALM_EXCLUDED_ATTRIBUTES.add("displayName");
+        REALM_EXCLUDED_ATTRIBUTES.add("displayNameHtml");
+        REALM_EXCLUDED_ATTRIBUTES.add("defaultSignatureAlgorithm");
+        REALM_EXCLUDED_ATTRIBUTES.add("bruteForceProtected");
+        REALM_EXCLUDED_ATTRIBUTES.add("permanentLockout");
+        REALM_EXCLUDED_ATTRIBUTES.add("maxFailureWaitSeconds");
+        REALM_EXCLUDED_ATTRIBUTES.add("waitIncrementSeconds");
+        REALM_EXCLUDED_ATTRIBUTES.add("quickLoginCheckMilliSeconds");
+        REALM_EXCLUDED_ATTRIBUTES.add("minimumQuickLoginWaitSeconds");
+        REALM_EXCLUDED_ATTRIBUTES.add("maxDeltaTimeSeconds");
+        REALM_EXCLUDED_ATTRIBUTES.add("failureFactor");
+        REALM_EXCLUDED_ATTRIBUTES.add("actionTokenGeneratedByAdminLifespan");
+        REALM_EXCLUDED_ATTRIBUTES.add("actionTokenGeneratedByUserLifespan");
+        REALM_EXCLUDED_ATTRIBUTES.add("offlineSessionMaxLifespanEnabled");
+        REALM_EXCLUDED_ATTRIBUTES.add("offlineSessionMaxLifespan");
+
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyRpEntityName");
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicySignatureAlgorithms");
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyRpId");
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyAttestationConveyancePreference");
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyAuthenticatorAttachment");
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyRequireResidentKey");
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyUserVerificationRequirement");
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyCreateTimeout");
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyAvoidSameAuthenticatorRegister");
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyAcceptableAaguids");
+
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyRpEntityNamePasswordless");
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicySignatureAlgorithmsPasswordless");
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyRpIdPasswordless");
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyAttestationConveyancePreferencePasswordless");
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyAuthenticatorAttachmentPasswordless");
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyRequireResidentKeyPasswordless");
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyUserVerificationRequirementPasswordless");
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyCreateTimeoutPasswordless");
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyAvoidSameAuthenticatorRegisterPasswordless");
+        REALM_EXCLUDED_ATTRIBUTES.add("webAuthnPolicyAcceptableAaguidsPasswordless");
+    }
+
+
     public static void buildGroupPath(StringBuilder sb, GroupModel group) {
         if (group.getParent() != null) {
             buildGroupPath(sb, group.getParent());
@@ -90,15 +139,21 @@ public class ModelToRepresentation {
         return rep;
     }
 
-    public static List<GroupRepresentation> searchForGroupByName(RealmModel realm, String search, Integer first, Integer max) {
+    public static List<GroupRepresentation> searchForGroupByName(RealmModel realm, boolean full, String search, Integer first, Integer max) {
         List<GroupRepresentation> result = new LinkedList<>();
         List<GroupModel> groups = realm.searchForGroupByName(search, first, max);
         if (Objects.isNull(groups)) return result;
         for (GroupModel group : groups) {
-            GroupRepresentation rep = toGroupHierarchy(group, false);
+            GroupRepresentation rep = toGroupHierarchy(group, full);
             result.add(rep);
         }
         return result;
+    }
+
+    public static List<GroupRepresentation> searchForGroupByName(UserModel user, boolean full, String search, Integer first, Integer max) {
+        return user.getGroups(search, first, max).stream()
+                .map(group -> toRepresentation(group, full))
+                .collect(Collectors.toList());
     }
 
     public static List<GroupRepresentation> toGroupHierarchy(RealmModel realm, boolean full, Integer first, Integer max) {
@@ -112,6 +167,12 @@ public class ModelToRepresentation {
         return hierarchy;
     }
 
+    public static List<GroupRepresentation> toGroupHierarchy(UserModel user, boolean full, Integer first, Integer max) {
+        return user.getGroups(first, max).stream()
+                .map(group -> toRepresentation(group, full))
+                .collect(Collectors.toList());
+    }
+
     public static List<GroupRepresentation> toGroupHierarchy(RealmModel realm, boolean full) {
         List<GroupRepresentation> hierarchy = new LinkedList<>();
         List<GroupModel> groups = realm.getTopLevelGroups();
@@ -121,6 +182,12 @@ public class ModelToRepresentation {
             hierarchy.add(rep);
         }
         return hierarchy;
+    }
+
+    public static List<GroupRepresentation> toGroupHierarchy(UserModel user, boolean full) {
+        return user.getGroups().stream()
+                .map(group -> toRepresentation(group, full))
+                .collect(Collectors.toList());
     }
 
     public static GroupRepresentation toGroupHierarchy(GroupModel group, boolean full) {
@@ -145,23 +212,37 @@ public class ModelToRepresentation {
         rep.setEmail(user.getEmail());
         rep.setEnabled(user.isEnabled());
         rep.setEmailVerified(user.isEmailVerified());
-        rep.setTotp(session.userCredentialManager().isConfiguredFor(realm, user, CredentialModel.OTP));
+        rep.setTotp(session.userCredentialManager().isConfiguredFor(realm, user, OTPCredentialModel.TYPE));
         rep.setDisableableCredentialTypes(session.userCredentialManager().getDisableableCredentialTypes(realm, user));
         rep.setFederationLink(user.getFederationLink());
 
         rep.setNotBefore(session.users().getNotBeforeOfUser(realm, user));
 
-        List<String> reqActions = new ArrayList<String>();
         Set<String> requiredActions = user.getRequiredActions();
-        reqActions.addAll(requiredActions);
+        List<String> reqActions = new ArrayList<>(requiredActions);
 
         rep.setRequiredActions(reqActions);
 
         if (user.getAttributes() != null && !user.getAttributes().isEmpty()) {
-            Map<String, List<String>> attrs = new HashMap<>();
-            attrs.putAll(user.getAttributes());
+            Map<String, List<String>> attrs = new HashMap<>(user.getAttributes());
             rep.setAttributes(attrs);
         }
+
+        return rep;
+    }
+
+    public static UserRepresentation toBriefRepresentation(UserModel user) {
+        UserRepresentation rep = new UserRepresentation();
+        rep.setId(user.getId());
+        rep.setUsername(user.getUsername());
+        rep.setCreatedTimestamp(user.getCreatedTimestamp());
+        rep.setLastName(user.getLastName());
+        rep.setFirstName(user.getFirstName());
+        rep.setEmail(user.getEmail());
+        rep.setEnabled(user.isEnabled());
+        rep.setEmailVerified(user.isEmailVerified());
+        rep.setFederationLink(user.getFederationLink());
+
         return rep;
     }
 
@@ -187,8 +268,8 @@ public class ModelToRepresentation {
             rep.setAuthDetails(toRepresentation(adminEvent.getAuthDetails()));
         }
         rep.setOperationType(adminEvent.getOperationType().toString());
-        if (adminEvent.getResourceType() != null) {
-            rep.setResourceType(adminEvent.getResourceType().toString());
+        if (adminEvent.getResourceTypeAsString() != null) {
+            rep.setResourceType(adminEvent.getResourceTypeAsString());
         }
         rep.setResourcePath(adminEvent.getResourcePath());
         rep.setRepresentation(adminEvent.getRepresentation());
@@ -207,6 +288,18 @@ public class ModelToRepresentation {
     }
 
     public static RoleRepresentation toRepresentation(RoleModel role) {
+        RoleRepresentation rep = new RoleRepresentation();
+        rep.setId(role.getId());
+        rep.setName(role.getName());
+        rep.setDescription(role.getDescription());
+        rep.setComposite(role.isComposite());
+        rep.setClientRole(role.isClientRole());
+        rep.setContainerId(role.getContainerId());
+        rep.setAttributes(role.getAttributes());
+        return rep;
+    }
+
+    public static RoleRepresentation toBriefRepresentation(RoleModel role) {
         RoleRepresentation rep = new RoleRepresentation();
         rep.setId(role.getId());
         rep.setName(role.getName());
@@ -244,10 +337,10 @@ public class ModelToRepresentation {
             rep.setEventsExpiration(realm.getEventsExpiration());
         }
         if (realm.getEventsListeners() != null) {
-            rep.setEventsListeners(new LinkedList<String>(realm.getEventsListeners()));
+            rep.setEventsListeners(new LinkedList<>(realm.getEventsListeners()));
         }
         if (realm.getEnabledEventTypes() != null) {
-            rep.setEnabledEventTypes(new LinkedList<String>(realm.getEnabledEventTypes()));
+            rep.setEnabledEventTypes(new LinkedList<>(realm.getEnabledEventTypes()));
         }
 
         rep.setAdminEventsEnabled(realm.isAdminEventsEnabled());
@@ -258,13 +351,21 @@ public class ModelToRepresentation {
         rep.setDuplicateEmailsAllowed(realm.isDuplicateEmailsAllowed());
         rep.setResetPasswordAllowed(realm.isResetPasswordAllowed());
         rep.setEditUsernameAllowed(realm.isEditUsernameAllowed());
+        rep.setDefaultSignatureAlgorithm(realm.getDefaultSignatureAlgorithm());
         rep.setRevokeRefreshToken(realm.isRevokeRefreshToken());
         rep.setRefreshTokenMaxReuse(realm.getRefreshTokenMaxReuse());
         rep.setAccessTokenLifespan(realm.getAccessTokenLifespan());
         rep.setAccessTokenLifespanForImplicitFlow(realm.getAccessTokenLifespanForImplicitFlow());
         rep.setSsoSessionIdleTimeout(realm.getSsoSessionIdleTimeout());
         rep.setSsoSessionMaxLifespan(realm.getSsoSessionMaxLifespan());
+        rep.setSsoSessionIdleTimeoutRememberMe(realm.getSsoSessionIdleTimeoutRememberMe());
+        rep.setSsoSessionMaxLifespanRememberMe(realm.getSsoSessionMaxLifespanRememberMe());
         rep.setOfflineSessionIdleTimeout(realm.getOfflineSessionIdleTimeout());
+        // KEYCLOAK-7688 Offline Session Max for Offline Token
+        rep.setOfflineSessionMaxLifespanEnabled(realm.isOfflineSessionMaxLifespanEnabled());
+        rep.setOfflineSessionMaxLifespan(realm.getOfflineSessionMaxLifespan());
+        rep.setClientSessionIdleTimeout(realm.getClientSessionIdleTimeout());
+        rep.setClientSessionMaxLifespan(realm.getClientSessionMaxLifespan());
         rep.setAccessCodeLifespan(realm.getAccessCodeLifespan());
         rep.setAccessCodeLifespanUserAction(realm.getAccessCodeLifespanUserAction());
         rep.setAccessCodeLifespanLogin(realm.getAccessCodeLifespanLogin());
@@ -287,6 +388,31 @@ public class ModelToRepresentation {
         rep.setOtpPolicyType(otpPolicy.getType());
         rep.setOtpPolicyLookAheadWindow(otpPolicy.getLookAheadWindow());
         rep.setOtpSupportedApplications(otpPolicy.getSupportedApplications());
+
+        WebAuthnPolicy webAuthnPolicy = realm.getWebAuthnPolicy();
+        rep.setWebAuthnPolicyRpEntityName(webAuthnPolicy.getRpEntityName());
+        rep.setWebAuthnPolicySignatureAlgorithms(webAuthnPolicy.getSignatureAlgorithm());
+        rep.setWebAuthnPolicyRpId(webAuthnPolicy.getRpId());
+        rep.setWebAuthnPolicyAttestationConveyancePreference(webAuthnPolicy.getAttestationConveyancePreference());
+        rep.setWebAuthnPolicyAuthenticatorAttachment(webAuthnPolicy.getAuthenticatorAttachment());
+        rep.setWebAuthnPolicyRequireResidentKey(webAuthnPolicy.getRequireResidentKey());
+        rep.setWebAuthnPolicyUserVerificationRequirement(webAuthnPolicy.getUserVerificationRequirement());
+        rep.setWebAuthnPolicyCreateTimeout(webAuthnPolicy.getCreateTimeout());
+        rep.setWebAuthnPolicyAvoidSameAuthenticatorRegister(webAuthnPolicy.isAvoidSameAuthenticatorRegister());
+        rep.setWebAuthnPolicyAcceptableAaguids(webAuthnPolicy.getAcceptableAaguids());
+
+        webAuthnPolicy = realm.getWebAuthnPolicyPasswordless();
+        rep.setWebAuthnPolicyPasswordlessRpEntityName(webAuthnPolicy.getRpEntityName());
+        rep.setWebAuthnPolicyPasswordlessSignatureAlgorithms(webAuthnPolicy.getSignatureAlgorithm());
+        rep.setWebAuthnPolicyPasswordlessRpId(webAuthnPolicy.getRpId());
+        rep.setWebAuthnPolicyPasswordlessAttestationConveyancePreference(webAuthnPolicy.getAttestationConveyancePreference());
+        rep.setWebAuthnPolicyPasswordlessAuthenticatorAttachment(webAuthnPolicy.getAuthenticatorAttachment());
+        rep.setWebAuthnPolicyPasswordlessRequireResidentKey(webAuthnPolicy.getRequireResidentKey());
+        rep.setWebAuthnPolicyPasswordlessUserVerificationRequirement(webAuthnPolicy.getUserVerificationRequirement());
+        rep.setWebAuthnPolicyPasswordlessCreateTimeout(webAuthnPolicy.getCreateTimeout());
+        rep.setWebAuthnPolicyPasswordlessAvoidSameAuthenticatorRegister(webAuthnPolicy.isAvoidSameAuthenticatorRegister());
+        rep.setWebAuthnPolicyPasswordlessAcceptableAaguids(webAuthnPolicy.getAcceptableAaguids());
+
         if (realm.getBrowserFlow() != null) rep.setBrowserFlow(realm.getBrowserFlow().getAlias());
         if (realm.getRegistrationFlow() != null) rep.setRegistrationFlow(realm.getRegistrationFlow().getAlias());
         if (realm.getDirectGrantFlow() != null) rep.setDirectGrantFlow(realm.getDirectGrantFlow().getAlias());
@@ -296,8 +422,7 @@ public class ModelToRepresentation {
 
         List<String> defaultRoles = realm.getDefaultRoles();
         if (!defaultRoles.isEmpty()) {
-            List<String> roleStrings = new ArrayList<String>();
-            roleStrings.addAll(defaultRoles);
+            List<String> roleStrings = new ArrayList<>(defaultRoles);
             rep.setDefaultRoles(roleStrings);
         }
         List<GroupModel> defaultGroups = realm.getDefaultGroups();
@@ -310,8 +435,8 @@ public class ModelToRepresentation {
         }
 
         List<RequiredCredentialModel> requiredCredentialModels = realm.getRequiredCredentials();
-        if (requiredCredentialModels.size() > 0) {
-            rep.setRequiredCredentials(new HashSet<String>());
+        if (!requiredCredentialModels.isEmpty()) {
+            rep.setRequiredCredentials(new HashSet<>());
             for (RequiredCredentialModel cred : requiredCredentialModels) {
                 rep.getRequiredCredentials().add(cred.getType());
             }
@@ -326,8 +451,8 @@ public class ModelToRepresentation {
         }
 
         rep.setInternationalizationEnabled(realm.isInternationalizationEnabled());
-        if(realm.getSupportedLocales() != null){
-            rep.setSupportedLocales(new HashSet<String>());
+        if (realm.getSupportedLocales() != null) {
+            rep.setSupportedLocales(new HashSet<>());
             rep.getSupportedLocales().addAll(realm.getSupportedLocales());
         }
         rep.setDefaultLocale(realm.getDefaultLocale());
@@ -337,8 +462,7 @@ public class ModelToRepresentation {
             exportGroups(realm, rep);
         }
 
-        Map<String, String> attributes = realm.getAttributes();
-        rep.setAttributes(attributes);
+        rep.setAttributes(stripRealmAttributesIncludedAsFields(realm.getAttributes()));
 
         if (!internal) {
             rep = StripSecretsUtils.strip(rep);
@@ -347,14 +471,32 @@ public class ModelToRepresentation {
         return rep;
     }
 
-     public static void exportGroups(RealmModel realm, RealmRepresentation rep) {
+    public static Map<String, String> stripRealmAttributesIncludedAsFields(Map<String, String> attributes) {
+        Map<String, String> a = new HashMap<>();
+
+        for (Map.Entry<String, String> e : attributes.entrySet()) {
+            if (REALM_EXCLUDED_ATTRIBUTES.contains(e.getKey())) {
+                continue;
+            }
+
+            if (e.getKey().startsWith("_browser_header")) {
+                continue;
+            }
+
+            a.put(e.getKey(), e.getValue());
+        }
+
+        return a;
+    }
+
+    public static void exportGroups(RealmModel realm, RealmRepresentation rep) {
         List<GroupRepresentation> groups = toGroupHierarchy(realm, true);
         rep.setGroups(groups);
     }
 
     public static void exportAuthenticationFlows(RealmModel realm, RealmRepresentation rep) {
-        rep.setAuthenticationFlows(new LinkedList<AuthenticationFlowRepresentation>());
-        rep.setAuthenticatorConfig(new LinkedList<AuthenticatorConfigRepresentation>());
+        rep.setAuthenticationFlows(new LinkedList<>());
+        rep.setAuthenticatorConfig(new LinkedList<>());
 
         List<AuthenticationFlowModel> authenticationFlows = new ArrayList<>(realm.getAuthenticationFlows());
         //ensure consistent ordering of authenticationFlows.
@@ -391,28 +533,10 @@ public class ModelToRepresentation {
 
     public static void exportRequiredActions(RealmModel realm, RealmRepresentation rep) {
 
-        rep.setRequiredActions(new LinkedList<RequiredActionProviderRepresentation>());
+        rep.setRequiredActions(new LinkedList<>());
 
-        List<RequiredActionProviderModel> requiredActionProviders = realm.getRequiredActionProviders();
-        List<RequiredActionProviderModel> copy = new LinkedList<>();
-        copy.addAll(requiredActionProviders);
-        requiredActionProviders = copy;
-        //ensure consistent ordering of requiredActionProviders.
-        Collections.sort(requiredActionProviders, new Comparator<RequiredActionProviderModel>() {
-            @Override
-            public int compare(RequiredActionProviderModel left, RequiredActionProviderModel right) {
-                String l = left.getAlias() != null ? left.getAlias() : "\0";
-                String r = right.getAlias() != null ? right.getAlias() : "\0";
-                return l.compareTo(r);
-            }
-        });
-
-        for (RequiredActionProviderModel model : requiredActionProviders) {
-            RequiredActionProviderRepresentation action = toRepresentation(model);
-            rep.getRequiredActions().add(action);
-        }
+        realm.getRequiredActionProviders().forEach(action -> rep.getRequiredActions().add(toRepresentation(action)));
     }
-
 
     public static RealmEventsConfigRepresentation toEventsConfigReprensetation(RealmModel realm) {
         RealmEventsConfigRepresentation rep = new RealmEventsConfigRepresentation();
@@ -426,7 +550,7 @@ public class ModelToRepresentation {
             rep.setEventsListeners(new LinkedList<>(realm.getEventsListeners()));
         }
 
-        if(realm.getEnabledEventTypes() != null) {
+        if (realm.getEnabledEventTypes() != null) {
             rep.setEnabledEventTypes(new LinkedList<>(realm.getEnabledEventTypes()));
         }
 
@@ -440,7 +564,18 @@ public class ModelToRepresentation {
     public static CredentialRepresentation toRepresentation(UserCredentialModel cred) {
         CredentialRepresentation rep = new CredentialRepresentation();
         rep.setType(CredentialRepresentation.SECRET);
-        rep.setValue(cred.getValue());
+        rep.setValue(cred.getChallengeResponse());
+        return rep;
+    }
+
+    public static CredentialRepresentation toRepresentation(CredentialModel cred) {
+        CredentialRepresentation rep = new CredentialRepresentation();
+        rep.setId(cred.getId());
+        rep.setType(cred.getType());
+        rep.setUserLabel(cred.getUserLabel());
+        rep.setCreatedDate(cred.getCreatedDate());
+        rep.setSecretData(cred.getSecretData());
+        rep.setCredentialData(cred.getCredentialData());
         return rep;
     }
 
@@ -487,7 +622,7 @@ public class ModelToRepresentation {
     }
 
 
-    public static ClientRepresentation toRepresentation(ClientModel clientModel) {
+    public static ClientRepresentation toRepresentation(ClientModel clientModel, KeycloakSession session) {
         ClientRepresentation rep = new ClientRepresentation();
         rep.setId(clientModel.getId());
         String providerId = StorageId.resolveProviderId(clientModel);
@@ -496,6 +631,7 @@ public class ModelToRepresentation {
         rep.setName(clientModel.getName());
         rep.setDescription(clientModel.getDescription());
         rep.setEnabled(clientModel.isEnabled());
+        rep.setAlwaysDisplayInConsole(clientModel.isAlwaysDisplayInConsole());
         rep.setAdminUrl(clientModel.getManagementUrl());
         rep.setPublicClient(clientModel.isPublicClient());
         rep.setFrontchannelLogout(clientModel.isFrontchannelLogout());
@@ -545,6 +681,13 @@ public class ModelToRepresentation {
             rep.setProtocolMappers(mappings);
         }
 
+        AuthorizationProvider authorization = session.getProvider(AuthorizationProvider.class);
+        ResourceServer resourceServer = authorization.getStoreFactory().getResourceServerStore().findById(clientModel.getId());
+
+        if (resourceServer != null) {
+            rep.setAuthorizationServicesEnabled(true);
+        }
+
         return rep;
     }
 
@@ -560,8 +703,7 @@ public class ModelToRepresentation {
         providerRep.setStoreToken(identityProviderModel.isStoreToken());
         providerRep.setTrustEmail(identityProviderModel.isTrustEmail());
         providerRep.setAuthenticateByDefault(identityProviderModel.isAuthenticateByDefault());
-        Map<String, String> config = new HashMap<>();
-        config.putAll(identityProviderModel.getConfig());
+        Map<String, String> config = new HashMap<>(identityProviderModel.getConfig());
         providerRep.setConfig(config);
         providerRep.setAddReadTokenRoleOnCreate(identityProviderModel.isAddReadTokenRoleOnCreate());
 
@@ -590,8 +732,7 @@ public class ModelToRepresentation {
         ProtocolMapperRepresentation rep = new ProtocolMapperRepresentation();
         rep.setId(model.getId());
         rep.setProtocol(model.getProtocol());
-        Map<String, String> config = new HashMap<String, String>();
-        config.putAll(model.getConfig());
+        Map<String, String> config = new HashMap<>(model.getConfig());
         rep.setConfig(config);
         rep.setName(model.getName());
         rep.setProtocolMapper(model.getProtocolMapper());
@@ -603,8 +744,7 @@ public class ModelToRepresentation {
         rep.setId(model.getId());
         rep.setIdentityProviderMapper(model.getIdentityProviderMapper());
         rep.setIdentityProviderAlias(model.getIdentityProviderAlias());
-        Map<String, String> config = new HashMap<String, String>();
-        config.putAll(model.getConfig());
+        Map<String, String> config = new HashMap<>(model.getConfig());
         rep.setConfig(config);
         rep.setName(model.getName());
         return rep;
@@ -615,7 +755,11 @@ public class ModelToRepresentation {
 
         List<String> grantedClientScopes = new LinkedList<>();
         for (ClientScopeModel clientScope : model.getGrantedClientScopes()) {
-            grantedClientScopes.add(clientScope.getName());
+            if (clientScope instanceof ClientModel) {
+                grantedClientScopes.add(((ClientModel) clientScope).getClientId());
+            } else {
+                grantedClientScopes.add(clientScope.getName());
+            }
         }
 
         UserConsentRepresentation consentRep = new UserConsentRepresentation();
@@ -626,7 +770,7 @@ public class ModelToRepresentation {
         return consentRep;
     }
 
-    public static AuthenticationFlowRepresentation  toRepresentation(RealmModel realm, AuthenticationFlowModel model) {
+    public static AuthenticationFlowRepresentation toRepresentation(RealmModel realm, AuthenticationFlowModel model) {
         AuthenticationFlowRepresentation rep = new AuthenticationFlowRepresentation();
         rep.setId(model.getId());
         rep.setBuiltIn(model.isBuiltIn());
@@ -634,7 +778,7 @@ public class ModelToRepresentation {
         rep.setProviderId(model.getProviderId());
         rep.setAlias(model.getAlias());
         rep.setDescription(model.getDescription());
-        rep.setAuthenticationExecutions(new LinkedList<AuthenticationExecutionExportRepresentation>());
+        rep.setAuthenticationExecutions(new LinkedList<>());
         for (AuthenticationExecutionModel execution : realm.getAuthenticationExecutions(model.getId())) {
             rep.getAuthenticationExecutions().add(toRepresentation(realm, execution));
         }
@@ -653,7 +797,7 @@ public class ModelToRepresentation {
         if (model.getFlowId() != null) {
             AuthenticationFlowModel flow = realm.getAuthenticationFlowById(model.getFlowId());
             rep.setFlowAlias(flow.getAlias());
-       }
+        }
         rep.setPriority(model.getPriority());
         rep.setRequirement(model.getRequirement().name());
         return rep;
@@ -675,6 +819,7 @@ public class ModelToRepresentation {
         rep.setConfig(model.getConfig());
         rep.setName(model.getName());
         rep.setProviderId(model.getProviderId());
+        rep.setPriority(model.getPriority());
         return rep;
     }
 
@@ -738,6 +883,7 @@ public class ModelToRepresentation {
         server.setName(client.getClientId());
         server.setAllowRemoteResourceManagement(model.isAllowRemoteResourceManagement());
         server.setPolicyEnforcementMode(model.getPolicyEnforcementMode());
+        server.setDecisionStrategy(model.getDecisionStrategy());
 
         return server;
     }
@@ -747,6 +893,10 @@ public class ModelToRepresentation {
     }
 
     public static <R extends AbstractPolicyRepresentation> R toRepresentation(Policy policy, AuthorizationProvider authorization, boolean genericRepresentation, boolean export) {
+        return toRepresentation(policy, authorization, genericRepresentation, export, false);
+    }
+    
+    public static <R extends AbstractPolicyRepresentation> R toRepresentation(Policy policy, AuthorizationProvider authorization, boolean genericRepresentation, boolean export, boolean allFields) {
         PolicyProviderFactory providerFactory = authorization.getProviderFactory(policy.getType());
         R representation;
 
@@ -770,6 +920,13 @@ public class ModelToRepresentation {
         representation.setType(policy.getType());
         representation.setDecisionStrategy(policy.getDecisionStrategy());
         representation.setLogic(policy.getLogic());
+        
+        if (allFields) {
+            representation.setResourcesData(policy.getResources().stream().map(
+                    resource -> toRepresentation(resource, resource.getResourceServer(), authorization, true)).collect(Collectors.toSet()));
+            representation.setScopesData(policy.getScopes().stream().map(
+                    resource -> toRepresentation(resource)).collect(Collectors.toSet()));
+        }
 
         return representation;
     }
@@ -785,7 +942,7 @@ public class ModelToRepresentation {
         resource.setType(model.getType());
         resource.setName(model.getName());
         resource.setDisplayName(model.getDisplayName());
-        resource.setUri(model.getUri());
+        resource.setUris(model.getUris());
         resource.setIconUri(model.getIconUri());
         resource.setOwnerManagedAccess(model.isOwnerManagedAccess());
 

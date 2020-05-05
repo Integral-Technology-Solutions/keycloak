@@ -18,13 +18,13 @@ package org.keycloak.testsuite.admin.client.authorization;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.function.Function;
-import java.util.function.Predicate;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import javax.ws.rs.NotFoundException;
@@ -34,17 +34,14 @@ import org.junit.Test;
 import org.keycloak.admin.client.resource.AuthorizationResource;
 import org.keycloak.admin.client.resource.GroupPoliciesResource;
 import org.keycloak.admin.client.resource.GroupPolicyResource;
+import org.keycloak.admin.client.resource.GroupsResource;
 import org.keycloak.admin.client.resource.PolicyResource;
-import org.keycloak.admin.client.resource.RolePoliciesResource;
-import org.keycloak.admin.client.resource.RolePolicyResource;
-import org.keycloak.representations.idm.ClientRepresentation;
+import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.representations.idm.GroupRepresentation;
-import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.authorization.DecisionStrategy;
 import org.keycloak.representations.idm.authorization.GroupPolicyRepresentation;
 import org.keycloak.representations.idm.authorization.Logic;
 import org.keycloak.representations.idm.authorization.PolicyRepresentation;
-import org.keycloak.representations.idm.authorization.RolePolicyRepresentation;
 import org.keycloak.testsuite.util.GroupBuilder;
 import org.keycloak.testsuite.util.RealmBuilder;
 
@@ -62,7 +59,16 @@ public class GroupPolicyManagementTest extends AbstractPolicyManagementTest {
                     }
                     return GroupBuilder.create().name(name).build();
                 }).collect(Collectors.toList()))
-                .build()).group(GroupBuilder.create().name("Group F").build());
+                .build()).group(GroupBuilder.create().name("Group F").build())
+                .group(GroupBuilder.create().name("Group G").build())
+                .group(GroupBuilder.create().name("Group H")
+                        .subGroups(Arrays.asList("Group I", "Group J").stream().map(name -> {
+                            if ("Group I".equals(name)) {
+                                return GroupBuilder.create().name(name).subGroups(Arrays.asList("Group K", "Group L").stream().map(name1 -> GroupBuilder.create().name(name1).build()).collect(Collectors.toList())).build();
+                            }
+                            return GroupBuilder.create().name(name).build();
+                        }).collect(Collectors.toList()))
+                        .build());
     }
 
     @Test
@@ -75,6 +81,21 @@ public class GroupPolicyManagementTest extends AbstractPolicyManagementTest {
         representation.setDecisionStrategy(DecisionStrategy.CONSENSUS);
         representation.setLogic(Logic.NEGATIVE);
         representation.setGroupsClaim("groups");
+        representation.addGroupPath("/Group A/Group B/Group C", true);
+        representation.addGroupPath("Group F");
+
+        assertCreated(authorization, representation);
+    }
+
+    @Test
+    public void testCreateWithoutGroupsClaim() {
+        AuthorizationResource authorization = getClient().authorization();
+        GroupPolicyRepresentation representation = new GroupPolicyRepresentation();
+
+        representation.setName(KeycloakModelUtils.generateId());
+        representation.setDescription("description");
+        representation.setDecisionStrategy(DecisionStrategy.CONSENSUS);
+        representation.setLogic(Logic.NEGATIVE);
         representation.addGroupPath("/Group A/Group B/Group C", true);
         representation.addGroupPath("Group F");
 
@@ -100,6 +121,7 @@ public class GroupPolicyManagementTest extends AbstractPolicyManagementTest {
         representation.setDescription("changed");
         representation.setDecisionStrategy(DecisionStrategy.AFFIRMATIVE);
         representation.setLogic(Logic.POSITIVE);
+        representation.setGroupsClaim(null);
         representation.removeGroup("/Group A/Group B");
 
         GroupPoliciesResource policies = authorization.policies().group();
@@ -135,18 +157,20 @@ public class GroupPolicyManagementTest extends AbstractPolicyManagementTest {
         representation.addGroupPath("Group F");
 
         GroupPoliciesResource policies = authorization.policies().group();
-        Response response = policies.create(representation);
-        GroupPolicyRepresentation created = response.readEntity(GroupPolicyRepresentation.class);
 
-        policies.findById(created.getId()).remove();
+        try (Response response = policies.create(representation)) {
+            GroupPolicyRepresentation created = response.readEntity(GroupPolicyRepresentation.class);
 
-        GroupPolicyResource removed = policies.findById(created.getId());
+            policies.findById(created.getId()).remove();
 
-        try {
-            removed.toRepresentation();
-            fail("Permission not removed");
-        } catch (NotFoundException ignore) {
+            GroupPolicyResource removed = policies.findById(created.getId());
 
+            try {
+                removed.toRepresentation();
+                fail("Permission not removed");
+            } catch (NotFoundException ignore) {
+
+            }
         }
     }
 
@@ -173,18 +197,60 @@ public class GroupPolicyManagementTest extends AbstractPolicyManagementTest {
         representation.addGroupPath("/Group A");
 
         GroupPoliciesResource policies = authorization.policies().group();
-        Response response = policies.create(representation);
-        GroupPolicyRepresentation created = response.readEntity(GroupPolicyRepresentation.class);
 
-        PolicyResource policy = authorization.policies().policy(created.getId());
-        PolicyRepresentation genericConfig = policy.toRepresentation();
+        try (Response response = policies.create(representation)) {
+            GroupPolicyRepresentation created = response.readEntity(GroupPolicyRepresentation.class);
 
-        assertNotNull(genericConfig.getConfig());
-        assertNotNull(genericConfig.getConfig().get("groups"));
+            PolicyResource policy = authorization.policies().policy(created.getId());
+            PolicyRepresentation genericConfig = policy.toRepresentation();
 
-        GroupRepresentation group = getRealm().groups().groups().stream().filter(groupRepresentation -> groupRepresentation.getName().equals("Group A")).findFirst().get();
+            assertNotNull(genericConfig.getConfig());
+            assertNotNull(genericConfig.getConfig().get("groups"));
 
-        assertTrue(genericConfig.getConfig().get("groups").contains(group.getId()));
+            GroupRepresentation group = getRealm().groups().groups().stream().filter(groupRepresentation -> groupRepresentation.getName().equals("Group A")).findFirst().get();
+
+            assertTrue(genericConfig.getConfig().get("groups").contains(group.getId()));
+        }
+    }
+
+    @Test
+    public void testDeleteGroupAndPolicy() {
+        AuthorizationResource authorization = getClient().authorization();
+        GroupPolicyRepresentation representation = new GroupPolicyRepresentation();
+
+        representation.setName(UUID.randomUUID().toString());
+        representation.setDescription("description");
+        representation.setDecisionStrategy(DecisionStrategy.CONSENSUS);
+        representation.setLogic(Logic.NEGATIVE);
+        representation.setGroupsClaim("groups");
+        representation.addGroupPath("/Group G", true);
+
+        assertCreated(authorization, representation);
+
+        GroupsResource groups = getRealm().groups();
+        GroupRepresentation group = groups.groups("Group G", null, null).get(0);
+        
+        groups.group(group.getId()).remove();
+
+        try {
+            getClient().authorization().policies().group().findByName(representation.getName());
+        } catch (NotFoundException e) {
+        }
+        
+        representation.getGroups().clear();
+        representation.addGroupPath("/Group H/Group I/Group K");
+        representation.addGroupPath("/Group F");
+        
+        assertCreated(authorization, representation);
+
+        group = groups.groups("Group K", null, null).get(0);
+
+        groups.group(group.getId()).remove();
+
+        GroupPolicyRepresentation policy = getClient().authorization().policies().group().findByName(representation.getName());
+
+        assertNotNull(policy);
+        assertEquals(1, policy.getGroups().size());
     }
 
     private void assertCreated(AuthorizationResource authorization, GroupPolicyRepresentation representation) {

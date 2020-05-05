@@ -17,54 +17,37 @@
 
 package org.keycloak.testsuite.federation.storage;
 
-import org.apache.commons.io.FileUtils;
-import org.jboss.arquillian.container.test.api.Deployment;
 import org.jboss.arquillian.graphene.page.Page;
-import org.jboss.shrinkwrap.api.spec.WebArchive;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.keycloak.OAuth2Constants;
-import org.keycloak.admin.client.resource.ClientsResource;
-import org.keycloak.admin.client.resource.UserResource;
-import org.keycloak.authentication.authenticators.browser.UsernamePasswordFormFactory;
 import org.keycloak.common.util.MultivaluedHashMap;
-import org.keycloak.component.ComponentModel;
 import org.keycloak.events.Details;
-import org.keycloak.models.AuthenticationExecutionModel;
-import org.keycloak.models.AuthenticationFlowBindings;
-import org.keycloak.models.AuthenticationFlowModel;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.Constants;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.cache.infinispan.ClientAdapter;
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.RefreshToken;
-import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.ComponentRepresentation;
 import org.keycloak.representations.idm.EventRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.storage.CacheableStorageProviderModel;
-import org.keycloak.storage.UserStorageProvider;
 import org.keycloak.storage.client.ClientStorageProvider;
 import org.keycloak.storage.client.ClientStorageProviderModel;
 import org.keycloak.testsuite.AbstractTestRealmKeycloakTest;
 import org.keycloak.testsuite.AssertEvents;
 import org.keycloak.testsuite.admin.ApiUtil;
-import org.keycloak.testsuite.authentication.PushButtonAuthenticatorFactory;
+import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude;
 import org.keycloak.testsuite.federation.HardcodedClientStorageProviderFactory;
-import org.keycloak.testsuite.federation.UserMapStorageFactory;
-import org.keycloak.testsuite.federation.UserPropertyFileStorageFactory;
-import org.keycloak.testsuite.forms.UsernameOnlyAuthenticator;
 import org.keycloak.testsuite.pages.AppPage;
 import org.keycloak.testsuite.pages.ErrorPage;
 import org.keycloak.testsuite.pages.LoginPage;
-import org.keycloak.testsuite.runonserver.RunOnServerDeployment;
 import org.keycloak.testsuite.util.OAuthClient;
 import org.keycloak.util.BasicAuthHelper;
 import org.keycloak.util.TokenUtil;
-import org.openqa.selenium.By;
 
 import javax.ws.rs.NotFoundException;
 import javax.ws.rs.client.Client;
@@ -73,11 +56,9 @@ import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Form;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
-import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.Calendar;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -85,18 +66,15 @@ import static java.util.Calendar.DAY_OF_WEEK;
 import static java.util.Calendar.HOUR_OF_DAY;
 import static java.util.Calendar.MINUTE;
 import static org.junit.Assert.assertEquals;
-import static org.keycloak.storage.CacheableStorageProviderModel.CACHE_POLICY;
-import static org.keycloak.storage.CacheableStorageProviderModel.EVICTION_DAY;
-import static org.keycloak.storage.CacheableStorageProviderModel.EVICTION_HOUR;
-import static org.keycloak.storage.CacheableStorageProviderModel.EVICTION_MINUTE;
-import static org.keycloak.storage.CacheableStorageProviderModel.MAX_LIFESPAN;
 import static org.keycloak.testsuite.admin.ApiUtil.findUserByUsername;
+import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude.AuthServer;
 
 /**
  * Test that clients can override auth flows
  *
  * @author <a href="mailto:bburke@redhat.com">Bill Burke</a>
  */
+@AuthServerContainerExclude(AuthServer.REMOTE)
 public class ClientStorageTest extends AbstractTestRealmKeycloakTest {
     @Rule
     public AssertEvents events = new AssertEvents(this);
@@ -115,12 +93,6 @@ public class ClientStorageTest extends AbstractTestRealmKeycloakTest {
     }
 
     protected String providerId;
-
-    @Deployment
-    public static WebArchive deploy() {
-        return RunOnServerDeployment.create(UserResource.class)
-                .addPackages(true, "org.keycloak.testsuite");
-    }
 
     protected String addComponent(ComponentRepresentation component) {
         Response resp = adminClient.realm("test").components().add(component);
@@ -401,7 +373,7 @@ public class ClientStorageTest extends AbstractTestRealmKeycloakTest {
         Assert.assertNull(tokenResponse.getErrorDescription());
         AccessToken token = oauth.verifyToken(tokenResponse.getAccessToken());
         String offlineTokenString = tokenResponse.getRefreshToken();
-        RefreshToken offlineToken = oauth.verifyRefreshToken(offlineTokenString);
+        RefreshToken offlineToken = oauth.parseRefreshToken(offlineTokenString);
 
         events.expectLogin()
                 .client("hardcoded-client")
@@ -432,7 +404,7 @@ public class ClientStorageTest extends AbstractTestRealmKeycloakTest {
         Assert.assertNull(tokenResponse.getErrorDescription());
         AccessToken token = oauth.verifyToken(tokenResponse.getAccessToken());
         String offlineTokenString = tokenResponse.getRefreshToken();
-        RefreshToken offlineToken = oauth.verifyRefreshToken(offlineTokenString);
+        RefreshToken offlineToken = oauth.parseRefreshToken(offlineTokenString);
     }
 
     private String testRefreshWithOfflineToken(AccessToken oldToken, RefreshToken offlineToken, String offlineTokenString,

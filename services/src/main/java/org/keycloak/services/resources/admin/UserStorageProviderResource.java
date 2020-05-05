@@ -18,7 +18,7 @@ package org.keycloak.services.resources.admin;
 
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.annotations.cache.NoCache;
-import org.jboss.resteasy.spi.NotFoundException;
+import javax.ws.rs.NotFoundException;
 import org.keycloak.common.ClientConnection;
 import org.keycloak.component.ComponentModel;
 import org.keycloak.events.admin.OperationType;
@@ -43,7 +43,6 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.UriInfo;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -63,9 +62,6 @@ public class UserStorageProviderResource {
 
     @Context
     protected ClientConnection clientConnection;
-
-    @Context
-    protected UriInfo uriInfo;
 
     @Context
     protected KeycloakSession session;
@@ -146,14 +142,18 @@ public class UserStorageProviderResource {
             syncResult = syncManager.syncAllUsers(session.getKeycloakSessionFactory(), realm.getId(), providerModel);
         } else if ("triggerChangedUsersSync".equals(action)) {
             syncResult = syncManager.syncChangedUsers(session.getKeycloakSessionFactory(), realm.getId(), providerModel);
+        } else if (action == null || action == "") {
+            logger.debug("Missing action");
+            throw new BadRequestException("Missing action");
         } else {
-            throw new NotFoundException("Unknown action: " + action);
+            logger.debug("Unknown action: " + action);
+            throw new BadRequestException("Unknown action: " + action);
         }
 
         Map<String, Object> eventRep = new HashMap<>();
         eventRep.put("action", action);
         eventRep.put("result", syncResult);
-        adminEvent.operation(OperationType.ACTION).resourcePath(uriInfo).representation(eventRep).success();
+        adminEvent.operation(OperationType.ACTION).resourcePath(session.getContext().getUri()).representation(eventRep).success();
 
         return syncResult;
     }
@@ -241,7 +241,7 @@ public class UserStorageProviderResource {
         Map<String, Object> eventRep = new HashMap<>();
         eventRep.put("action", direction);
         eventRep.put("result", syncResult);
-        adminEvent.operation(OperationType.ACTION).resourcePath(uriInfo).representation(eventRep).success();
+        adminEvent.operation(OperationType.ACTION).resourcePath(session.getContext().getUri()).representation(eventRep).success();
         return syncResult;
     }
 

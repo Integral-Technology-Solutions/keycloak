@@ -17,13 +17,17 @@
 
 package org.keycloak.testsuite.oidc.flows;
 
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.jboss.arquillian.graphene.page.Page;
+import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.keycloak.OAuthErrorException;
+import org.keycloak.crypto.Algorithm;
 import org.keycloak.events.Details;
 import org.keycloak.events.Errors;
-import org.keycloak.jose.jws.Algorithm;
+import org.keycloak.jose.jws.JWSHeader;
+import org.keycloak.jose.jws.JWSInput;
 import org.keycloak.representations.IDToken;
 import org.keycloak.representations.idm.EventRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
@@ -31,17 +35,22 @@ import org.keycloak.testsuite.Assert;
 import org.keycloak.testsuite.AssertEvents;
 import org.keycloak.testsuite.AbstractTestRealmKeycloakTest;
 import org.keycloak.testsuite.admin.AbstractAdminTest;
+import org.keycloak.testsuite.admin.ApiUtil;
 import org.keycloak.testsuite.pages.AppPage;
 import org.keycloak.testsuite.pages.LoginPage;
 import org.keycloak.testsuite.util.ClientManager;
 import org.keycloak.testsuite.util.OAuthClient;
+import org.keycloak.testsuite.util.TokenSignatureUtil;
 
 import javax.ws.rs.core.UriBuilder;
 import java.io.IOException;
+import java.security.Security;
 import java.util.List;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 
 /**
  * Abstract test for various values of response_type
@@ -50,8 +59,10 @@ import static org.junit.Assert.assertTrue;
  */
 public abstract class AbstractOIDCResponseTypeTest extends AbstractTestRealmKeycloakTest {
 
-    // Harcoded for now
-    Algorithm jwsAlgorithm = Algorithm.RS256;
+    @BeforeClass
+    public static void addBouncyCastleProvider() {
+        if (Security.getProvider("BC") == null) Security.addProvider(new BouncyCastleProvider());
+    }
 
     @Rule
     public AssertEvents events = new AssertEvents(this);
@@ -145,7 +156,7 @@ public abstract class AbstractOIDCResponseTypeTest extends AbstractTestRealmKeyc
 
         OAuthClient.AuthorizationEndpointResponse errorResponse = new OAuthClient.AuthorizationEndpointResponse(oauth);
         Assert.assertTrue(errorResponse.isRedirected());
-        Assert.assertEquals(errorResponse.getError(), OAuthErrorException.UNSUPPORTED_RESPONSE_TYPE);
+        Assert.assertEquals(errorResponse.getError(), OAuthErrorException.UNAUTHORIZED_CLIENT);
         Assert.assertEquals(errorResponse.getErrorDescription(), "Client is not allowed to initiate browser login with given response_type. Implicit flow is disabled for the client.");
 
         events.expectLogin().error(Errors.NOT_ALLOWED).user((String) null).session((String) null).clearDetails().assertEvent();
@@ -164,7 +175,7 @@ public abstract class AbstractOIDCResponseTypeTest extends AbstractTestRealmKeyc
 
         OAuthClient.AuthorizationEndpointResponse errorResponse = new OAuthClient.AuthorizationEndpointResponse(oauth);
         Assert.assertTrue(errorResponse.isRedirected());
-        Assert.assertEquals(errorResponse.getError(), OAuthErrorException.UNSUPPORTED_RESPONSE_TYPE);
+        Assert.assertEquals(errorResponse.getError(), OAuthErrorException.UNAUTHORIZED_CLIENT);
         Assert.assertEquals(errorResponse.getErrorDescription(), "Client is not allowed to initiate browser login with given response_type. Standard flow is disabled for the client.");
 
         events.expectLogin().error(Errors.NOT_ALLOWED).user((String) null).session((String) null).clearDetails().assertEvent();
@@ -213,5 +224,77 @@ public abstract class AbstractOIDCResponseTypeTest extends AbstractTestRealmKeyc
 
     protected ClientManager.ClientManagerBuilder clientManagerBuilder() {
         return ClientManager.realm(adminClient.realm("test")).clientId("test-app");
+    }
+
+    private void oidcFlow(String expectedAccessAlg, String expectedIdTokenAlg) throws Exception {
+        EventRepresentation loginEvent = loginUser("abcdef123456");
+
+        OAuthClient.AuthorizationEndpointResponse authzResponse = new OAuthClient.AuthorizationEndpointResponse(oauth, isFragment());
+        Assert.assertNotNull(authzResponse.getSessionState());
+
+        JWSHeader header = null;
+        String idToken = authzResponse.getIdToken();
+        String accessToken = authzResponse.getAccessToken();
+        if (idToken != null) {
+            header = new JWSInput(idToken).getHeader();
+            assertEquals(expectedIdTokenAlg, header.getAlgorithm().name());
+            assertEquals("JWT", header.getType());
+            assertNull(header.getContentType());
+        }
+        if (accessToken != null) {
+            header = new JWSInput(accessToken).getHeader();
+            assertEquals(expectedAccessAlg, header.getAlgorithm().name());
+            assertEquals("JWT", header.getType());
+            assertNull(header.getContentType());
+        }
+
+        List<IDToken> idTokens = testAuthzResponseAndRetrieveIDTokens(authzResponse, loginEvent);
+
+        for (IDToken idt : idTokens) {
+            Assert.assertEquals("abcdef123456", idt.getNonce());
+            Assert.assertEquals(authzResponse.getSessionState(), idt.getSessionState());
+        }
+    }
+
+    @Test
+    public void oidcFlow_RealmRS256_ClientRS384() throws Exception {
+        oidcFlowRequest(Algorithm.RS256, Algorithm.RS384);
+    }
+
+    @Test
+    public void oidcFlow_RealmES256_ClientES384() throws Exception {
+        oidcFlowRequest(Algorithm.ES256, Algorithm.ES384);
+    }
+
+    @Test
+    public void oidcFlow_RealmRS256_ClientPS256() throws Exception {
+        oidcFlowRequest(Algorithm.RS256, Algorithm.PS256);
+    }
+
+    @Test
+    public void oidcFlow_RealmPS256_ClientES256() throws Exception {
+        oidcFlowRequest(Algorithm.PS256, Algorithm.ES256);
+    }
+
+    private void oidcFlowRequest(String expectedAccessAlg, String expectedIdTokenAlg) throws Exception {
+        try {
+            setIdTokenSignatureAlgorithm(expectedIdTokenAlg);
+            // Realm setting is used for access token signature algorithm
+            TokenSignatureUtil.changeRealmTokenSignatureProvider(adminClient, expectedAccessAlg);
+            TokenSignatureUtil.changeClientIdTokenSignatureProvider(ApiUtil.findClientByClientId(adminClient.realm("test"), "test-app"), expectedIdTokenAlg);
+            oidcFlow(expectedAccessAlg, expectedIdTokenAlg);
+        } finally {
+            setIdTokenSignatureAlgorithm(Algorithm.RS256);
+            TokenSignatureUtil.changeRealmTokenSignatureProvider(adminClient, Algorithm.RS256);
+            TokenSignatureUtil.changeClientIdTokenSignatureProvider(ApiUtil.findClientByClientId(adminClient.realm("test"), "test-app"), Algorithm.RS256);
+        }
+    }
+
+    private String idTokenSigAlgName = Algorithm.RS256;
+    private void setIdTokenSignatureAlgorithm(String idTokenSigAlgName) {
+        this.idTokenSigAlgName = idTokenSigAlgName;
+    }
+    protected String getIdTokenSignatureAlgorithm() {
+        return this.idTokenSigAlgName;
     }
 }

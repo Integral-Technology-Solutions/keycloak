@@ -5,6 +5,7 @@ import org.keycloak.dom.saml.v2.protocol.AuthnRequestType;
 import org.keycloak.protocol.saml.SamlProtocol;
 import org.keycloak.saml.SignatureAlgorithm;
 import org.keycloak.saml.common.constants.GeneralConstants;
+import org.keycloak.saml.common.constants.JBossSAMLURIConstants;
 import org.keycloak.saml.common.exceptions.ConfigurationException;
 import org.keycloak.saml.common.exceptions.ParsingException;
 import org.keycloak.saml.common.exceptions.ProcessingException;
@@ -12,13 +13,22 @@ import org.keycloak.saml.processing.api.saml.v2.request.SAML2Request;
 import org.keycloak.saml.processing.core.saml.v2.common.SAMLDocumentHolder;
 import org.keycloak.saml.processing.web.util.RedirectBindingUtil;
 import org.keycloak.services.resources.RealmsResource;
+import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude;
+import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude.AuthServer;
 import org.keycloak.testsuite.util.KeyUtils;
+import org.keycloak.testsuite.util.Matchers;
 import org.keycloak.testsuite.util.SamlClient;
 import org.keycloak.testsuite.util.SamlClient.Binding;
 import org.keycloak.testsuite.util.SamlClient.RedirectStrategyWithSwitchableFollowRedirect;
+import org.keycloak.testsuite.util.SamlClient.Step;
 import org.keycloak.testsuite.util.SamlClientBuilder;
+import java.io.IOException;
 import java.net.URI;
 import java.security.Signature;
+import java.util.List;
+import java.util.Objects;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.core.UriBuilder;
@@ -34,9 +44,10 @@ import org.w3c.dom.Document;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertThat;
+import static org.keycloak.testsuite.arquillian.AuthServerTestEnricher.AUTH_SERVER_PORT;
 import static org.keycloak.testsuite.saml.AbstractSamlTest.REALM_NAME;
-import static org.keycloak.testsuite.util.IOUtil.documentToString;
-import static org.keycloak.testsuite.util.IOUtil.setDocElementAttributeValue;
+import static org.keycloak.testsuite.utils.io.IOUtil.documentToString;
+import static org.keycloak.testsuite.utils.io.IOUtil.setDocElementAttributeValue;
 import static org.keycloak.testsuite.util.Matchers.statusCodeIsHC;
 
 /**
@@ -149,6 +160,7 @@ public class BasicSamlTest extends AbstractSamlTest {
     }
 
     @Test
+    @AuthServerContainerExclude(AuthServer.REMOTE)
     public void testNoPortInDestination() throws Exception {
         // note that this test relies on settings of the login-protocol.saml.knownProtocols configuration option
         testWithOverriddenPort(-1, Response.Status.OK, containsString("login"));
@@ -156,7 +168,7 @@ public class BasicSamlTest extends AbstractSamlTest {
 
     @Test
     public void testExplicitPortInDestination() throws Exception {
-        testWithOverriddenPort(Integer.valueOf(System.getProperty("auth.server.http.port")), Response.Status.OK, containsString("login"));
+        testWithOverriddenPort(Integer.valueOf(AUTH_SERVER_PORT), Response.Status.OK, containsString("login"));
     }
 
     @Test
@@ -176,5 +188,58 @@ public class BasicSamlTest extends AbstractSamlTest {
             assertThat(response, statusCodeIsHC(expectedHttpCode));
             assertThat(EntityUtils.toString(response.getEntity(), "UTF-8"), pageTextMatcher);
         }
+    }
+
+    @Test
+    public void testReauthnWithForceAuthnNotSet() throws Exception {
+        testReauthnWithForceAuthn(null);
+    }
+
+    @Test
+    public void testReauthnWithForceAuthnFalse() throws Exception {
+        testReauthnWithForceAuthn(false);
+    }
+
+    @Test
+    public void testReauthnWithForceAuthnTrue() throws Exception {
+        testReauthnWithForceAuthn(true);
+    }
+
+    private void testReauthnWithForceAuthn(Boolean reloginRequired) throws Exception {
+        // Ensure that the first authentication passes
+        SamlClient samlClient = new SamlClientBuilder()
+          // First authn
+          .authnRequest(getAuthServerSamlEndpoint(REALM_NAME), SAML_CLIENT_ID_SALES_POST, SAML_ASSERTION_CONSUMER_URL_SALES_POST, Binding.POST)
+          .build()
+
+          .login().user(bburkeUser).build()
+
+          .execute(hr -> {
+            try {
+                SAMLDocumentHolder doc = Binding.POST.extractResponse(hr);
+                assertThat(doc.getSamlObject(), Matchers.isSamlStatusResponse(JBossSAMLURIConstants.STATUS_SUCCESS));
+            } catch (IOException ex) {
+                Logger.getLogger(BasicSamlTest.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        });
+
+        List<Step> secondAuthn = new SamlClientBuilder()
+          // Second authn with forceAuth not set (SSO)
+          .authnRequest(getAuthServerSamlEndpoint(REALM_NAME), SAML_CLIENT_ID_SALES_POST2, SAML_ASSERTION_CONSUMER_URL_SALES_POST2, Binding.POST)
+          .transformObject(so -> {
+              so.setForceAuthn(reloginRequired);
+              return so;
+          })
+          .build()
+
+          .assertResponse(Matchers.bodyHC(containsString(
+            Objects.equals(reloginRequired, Boolean.TRUE)
+              ? "Log in"
+              : GeneralConstants.SAML_RESPONSE_KEY
+          )))
+
+          .getSteps();
+
+        samlClient.execute(secondAuthn);
     }
 }

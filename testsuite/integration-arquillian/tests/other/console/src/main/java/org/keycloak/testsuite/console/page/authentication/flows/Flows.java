@@ -8,6 +8,8 @@ import org.openqa.selenium.support.ui.Select;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static org.keycloak.testsuite.util.UIUtils.clickLink;
+import static org.keycloak.testsuite.util.UIUtils.getTextFromElement;
 import static org.keycloak.testsuite.util.UIUtils.performOperationWithPageReload;
 
 /**
@@ -67,7 +69,7 @@ public class Flows extends Authentication {
     }
 
     public String getFlowSelectValue() {
-        return flowSelect.getFirstSelectedOption().getText();
+        return getTextFromElement(flowSelect.getFirstSelectedOption());
     }
 
     public List<String> getFlowAllValues() {
@@ -79,22 +81,22 @@ public class Flows extends Authentication {
     }
 
     public void clickNew() {
-        newButton.click();
+        clickLink(newButton);
     }
 
     public void clickCopy() {
-        copyButton.click();
+        clickLink(copyButton);
     }
 
     public void clickDelete() {
-        deleteButton.click();
+        clickLink(deleteButton);
     }
 
     public void clickAddExecution() {
-        addExecutionButton.click();
+        clickLink(addExecutionButton);
     }
 
     public void clickAddFlow() {
-        addFlowButton.click();
+        clickLink(addFlowButton);
     }
 }

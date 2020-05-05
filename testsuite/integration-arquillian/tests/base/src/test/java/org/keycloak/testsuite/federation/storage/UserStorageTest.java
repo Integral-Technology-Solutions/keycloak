@@ -1,57 +1,85 @@
 package org.keycloak.testsuite.federation.storage;
 
+import org.apache.commons.io.FileUtils;
+import org.jboss.arquillian.graphene.page.Page;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Ignore;
+import org.junit.Rule;
+import org.junit.Test;
+import org.keycloak.admin.client.resource.RealmResource;
+import org.keycloak.admin.client.resource.UserResource;
+import org.keycloak.common.util.MultivaluedHashMap;
+import org.keycloak.common.util.ObjectUtil;
+import org.keycloak.credential.CredentialAuthentication;
+import org.keycloak.credential.CredentialModel;
+import org.keycloak.credential.UserCredentialStoreManager;
+import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.RealmModel;
+import org.keycloak.models.UserModel;
+import org.keycloak.models.cache.CachedUserModel;
+import org.keycloak.models.credential.OTPCredentialModel;
+import org.keycloak.models.credential.PasswordCredentialModel;
+import org.keycloak.models.utils.KeycloakModelUtils;
+import org.keycloak.representations.idm.ComponentRepresentation;
+import org.keycloak.representations.idm.CredentialRepresentation;
+import org.keycloak.representations.idm.GroupRepresentation;
+import org.keycloak.representations.idm.RealmRepresentation;
+import org.keycloak.representations.idm.RoleRepresentation;
+import org.keycloak.representations.idm.UserRepresentation;
+import org.keycloak.storage.CacheableStorageProviderModel.CachePolicy;
+import org.keycloak.storage.StorageId;
+import org.keycloak.storage.UserStorageProvider;
+import org.keycloak.testsuite.AbstractAuthTest;
+import org.keycloak.testsuite.admin.ApiUtil;
+import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude;
+import org.keycloak.testsuite.arquillian.annotation.ModelTest;
+import org.keycloak.testsuite.federation.UserMapStorage;
+import org.keycloak.testsuite.federation.UserMapStorageFactory;
+import org.keycloak.testsuite.federation.UserPropertyFileStorageFactory;
+import org.keycloak.testsuite.pages.LoginPage;
+import org.keycloak.testsuite.pages.RegisterPage;
+import org.keycloak.testsuite.pages.VerifyEmailPage;
+import org.keycloak.testsuite.updaters.RealmAttributeUpdater;
+import org.keycloak.testsuite.util.GreenMailRule;
+import org.keycloak.testsuite.util.TestCleanup;
+
+import javax.mail.internet.MimeMessage;
+import javax.ws.rs.NotFoundException;
+import javax.ws.rs.core.Response;
 import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
-import static java.util.Calendar.DAY_OF_WEEK;
-import static java.util.Calendar.HOUR_OF_DAY;
-import static java.util.Calendar.MINUTE;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
-import javax.ws.rs.NotFoundException;
-import javax.ws.rs.core.Response;
+import java.util.concurrent.atomic.AtomicReference;
 
-import org.apache.commons.io.FileUtils;
-import org.jboss.arquillian.container.test.api.Deployment;
-import org.jboss.shrinkwrap.api.spec.WebArchive;
-import org.junit.After;
-import org.junit.Assert;
+import static java.util.Calendar.DAY_OF_WEEK;
+import static java.util.Calendar.HOUR_OF_DAY;
+import static java.util.Calendar.MINUTE;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import org.junit.Before;
-import org.junit.Ignore;
-import org.junit.Test;
-import org.keycloak.admin.client.resource.UserResource;
-import org.keycloak.common.util.MultivaluedHashMap;
-import org.keycloak.models.RealmModel;
-import org.keycloak.models.UserModel;
 import static org.keycloak.models.UserModel.RequiredAction.UPDATE_PROFILE;
-import org.keycloak.models.cache.CachedUserModel;
-import org.keycloak.representations.idm.ComponentRepresentation;
-import org.keycloak.representations.idm.GroupRepresentation;
-import org.keycloak.representations.idm.RealmRepresentation;
-import org.keycloak.representations.idm.RoleRepresentation;
-import org.keycloak.representations.idm.UserRepresentation;
-import org.keycloak.storage.UserStorageProvider;
+import org.keycloak.provider.ProviderFactory;
 import static org.keycloak.storage.UserStorageProviderModel.CACHE_POLICY;
-import org.keycloak.storage.CacheableStorageProviderModel.CachePolicy;
 import static org.keycloak.storage.UserStorageProviderModel.EVICTION_DAY;
 import static org.keycloak.storage.UserStorageProviderModel.EVICTION_HOUR;
 import static org.keycloak.storage.UserStorageProviderModel.EVICTION_MINUTE;
+import static org.keycloak.storage.UserStorageProviderModel.IMPORT_ENABLED;
 import static org.keycloak.storage.UserStorageProviderModel.MAX_LIFESPAN;
-import org.keycloak.testsuite.AbstractAuthTest;
-import org.keycloak.testsuite.admin.ApiUtil;
-import org.keycloak.testsuite.federation.UserMapStorage;
-import org.keycloak.testsuite.federation.UserMapStorageFactory;
-import org.keycloak.testsuite.federation.UserPropertyFileStorageFactory;
-import org.keycloak.testsuite.runonserver.RunOnServerDeployment;
+import static org.keycloak.testsuite.actions.RequiredActionEmailVerificationTest.getPasswordResetEmailLink;
+import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude.AuthServer;
+import org.keycloak.testsuite.util.WaitUtils;
+
 import static org.keycloak.testsuite.util.URLAssert.assertCurrentUrlDoesntStartWith;
 import static org.keycloak.testsuite.util.URLAssert.assertCurrentUrlStartsWith;
 
@@ -59,11 +87,24 @@ import static org.keycloak.testsuite.util.URLAssert.assertCurrentUrlStartsWith;
  *
  * @author tkyjovsk
  */
+@AuthServerContainerExclude(AuthServer.REMOTE)
 public class UserStorageTest extends AbstractAuthTest {
 
     private String memProviderId;
     private String propProviderROId;
     private String propProviderRWId;
+
+    @Rule
+    public GreenMailRule greenMail = new GreenMailRule();
+
+    @Page
+    protected LoginPage loginPage;
+
+    @Page
+    protected RegisterPage registerPage;
+
+    @Page
+    protected VerifyEmailPage verifyEmailPage;
 
     private static final File CONFIG_DIR = new File(System.getProperty("auth.server.config.dir", ""));
 
@@ -75,6 +116,7 @@ public class UserStorageTest extends AbstractAuthTest {
         memProvider.setProviderType(UserStorageProvider.class.getName());
         memProvider.setConfig(new MultivaluedHashMap<>());
         memProvider.getConfig().putSingle("priority", Integer.toString(0));
+        memProvider.getConfig().putSingle(IMPORT_ENABLED, Boolean.toString(false));
 
         memProviderId = addComponent(memProvider);
 
@@ -105,7 +147,7 @@ public class UserStorageTest extends AbstractAuthTest {
     }
 
     @After
-    public void removeTestUser() throws URISyntaxException, IOException {
+    public void afterTestCleanUp() throws URISyntaxException, IOException {
         testingClient.server().run(session -> {
             RealmModel realm = session.realms().getRealmByName("test");
             if (realm == null) {
@@ -117,6 +159,11 @@ public class UserStorageTest extends AbstractAuthTest {
                 session.userLocalStorage().removeUser(realm, user);
                 session.userCache().clear();
             }
+
+            //we need to clear userPasswords and userGroups from UserMapStorageFactory
+            UserMapStorageFactory userMapStorageFactory = (UserMapStorageFactory) session.getKeycloakSessionFactory().getProviderFactory(UserStorageProvider.class, UserMapStorageFactory.PROVIDER_ID);
+            Assert.assertNotNull(userMapStorageFactory);
+            userMapStorageFactory.clear();
         });
     }
 
@@ -132,11 +179,15 @@ public class UserStorageTest extends AbstractAuthTest {
         return propProviderRW;
     }
 
-    protected String addComponent(ComponentRepresentation component) {
-        Response resp = testRealmResource().components().add(component);
+    private String addComponent(ComponentRepresentation component) {
+        return addComponent(testRealmResource(), getCleanup(), component);
+    }
+
+    static String addComponent(RealmResource realmResource, TestCleanup testCleanup, ComponentRepresentation component) {
+        Response resp = realmResource.components().add(component);
         resp.close();
         String id = ApiUtil.getCreatedId(resp);
-        getCleanup().addComponentId(id);
+        testCleanup.addComponentId(id);
         return id;
     }
 
@@ -159,6 +210,17 @@ public class UserStorageTest extends AbstractAuthTest {
         testRealmResource().components().query().forEach((c) -> {
             log.infof("%s - %s - %s", c.getId(), c.getProviderType(), c.getName());
         });
+    }
+
+    /**
+     * KEYCLOAK-4013
+     *
+     * @throws Exception
+     */
+    @Test
+    @ModelTest
+    public void testCast(KeycloakSession session) throws Exception {
+        List<CredentialAuthentication> list = UserCredentialStoreManager.getCredentialProviders(session, null, CredentialAuthentication.class);
     }
 
     @Test
@@ -267,6 +329,39 @@ public class UserStorageTest extends AbstractAuthTest {
         assertFalse(foundRole);
     }
 
+    @Test
+    @AuthServerContainerExclude(AuthServer.REMOTE)
+    public void testRegisterWithRequiredEmail() throws Exception {
+        try (AutoCloseable c = new RealmAttributeUpdater(testRealmResource())
+          .updateWith(r -> {
+            Map<String, String> config = new HashMap<>();
+            config.put("from", "auto@keycloak.org");
+            config.put("host", "localhost");
+            config.put("port", "3025");
+            r.setSmtpServer(config);
+            r.setRegistrationAllowed(true);
+            r.setVerifyEmail(true);
+          })
+          .update()) {
+
+            testRealmAccountPage.navigateTo();
+            loginPage.clickRegister();
+            registerPage.register("firstName", "lastName", "email@mail.com", "verifyEmail", "password", "password");
+
+            verifyEmailPage.assertCurrent();
+
+            Assert.assertEquals(1, greenMail.getReceivedMessages().length);
+
+            MimeMessage message = greenMail.getReceivedMessages()[0];
+
+            String verificationUrl = getPasswordResetEmailLink(message);
+
+            driver.navigate().to(verificationUrl.trim());
+
+            testRealmAccountPage.assertCurrent();
+        }
+    }
+
     public UserResource user(String userId) {
         return testRealmResource().users().get(userId);
     }
@@ -362,13 +457,21 @@ public class UserStorageTest extends AbstractAuthTest {
         Assert.assertTrue(usernames.contains("thor"));
 
         // search by single attribute
-        // FIXME - no equivalent for model in REST
-    }
+        testingClient.server().run(session -> {
+            System.out.println("search by single attribute");
 
-    @Deployment
-    public static WebArchive deploy() {
-        return RunOnServerDeployment.create(UserResource.class)
-                .addPackages(true, "org.keycloak.testsuite");
+            RealmModel realm = session.realms().getRealmByName("test");
+            UserModel userModel = session.users().getUserByUsername("thor", realm);
+            userModel.setSingleAttribute("weapon", "hammer");
+
+            List<UserModel> userModels = session.users().searchForUserByUserAttribute("weapon", "hammer", realm);
+            for (UserModel u : userModels) {
+                System.out.println(u.getUsername());
+
+            }
+            Assert.assertEquals(1, userModels.size());
+            Assert.assertEquals("thor", userModels.get(0).getUsername());
+        });
     }
 
     private void setDailyEvictionTime(int hour, int minutes) {
@@ -623,6 +726,26 @@ public class UserStorageTest extends AbstractAuthTest {
             System.out.println("User class: " + user.getClass());
             Assert.assertFalse(user instanceof CachedUserModel); // should be evicted
         });
+
+
+        testingClient.server().run(session -> {
+            RealmModel realm = session.realms().getRealmByName("test");
+            UserModel thor2 = session.users().getUserByUsername("thor", realm);
+            Assert.assertFalse(thor2 instanceof CachedUserModel);
+        });
+
+        propProviderRW = testRealmResource().components().component(propProviderRWId).toRepresentation();
+        propProviderRW.getConfig().putSingle(CACHE_POLICY, CachePolicy.DEFAULT.name());
+        propProviderRW.getConfig().remove("evictionHour");
+        propProviderRW.getConfig().remove("evictionMinute");
+        propProviderRW.getConfig().remove("evictionDay");
+        testRealmResource().components().component(propProviderRWId).update(propProviderRW);
+
+        testingClient.server().run(session -> {
+            RealmModel realm = session.realms().getRealmByName("test");
+            UserModel thor = session.users().getUserByUsername("thor", realm);
+            System.out.println("Foo");
+        });
     }
 
     @Test
@@ -640,6 +763,8 @@ public class UserStorageTest extends AbstractAuthTest {
 
             Assert.assertEquals(1, UserMapStorage.allocations.get());
             Assert.assertEquals(0, UserMapStorage.closings.get());
+
+            session.users().removeUser(realm,session.users().getUserByUsername("memuser",realm));
         });
 
         testingClient.server().run(session -> {
@@ -729,6 +854,176 @@ public class UserStorageTest extends AbstractAuthTest {
             Assert.assertEquals(2, UserMapStorage.roleRemovals.get()); // check if role removal hooks were called
         });
 
+    }
+
+
+    @Test
+    @ModelTest
+    public void testCredentialCRUD(KeycloakSession session) throws Exception {
+        AtomicReference<String> passwordId = new AtomicReference<>();
+        AtomicReference<String> otp1Id = new AtomicReference<>();
+        AtomicReference<String> otp2Id = new AtomicReference<>();
+
+        KeycloakModelUtils.runJobInTransaction(session.getKeycloakSessionFactory(), (KeycloakSession currentSession) -> {
+            RealmModel realm = currentSession.realms().getRealmByName("test");
+
+            UserModel user = currentSession.users().getUserByUsername("thor", realm);
+            Assert.assertFalse(StorageId.isLocalStorage(user));
+
+            List<CredentialModel> list = currentSession.userCredentialManager().getStoredCredentials(realm, user);
+            org.keycloak.testsuite.Assert.assertEquals(0, list.size());
+
+            // Create password
+            CredentialModel passwordCred = PasswordCredentialModel.createFromValues("my-algorithm", "theSalt".getBytes(), 22, "ABC");
+            passwordCred = currentSession.userCredentialManager().createCredential(realm, user, passwordCred);
+            passwordId.set(passwordCred.getId());
+
+            // Create Password and 2 OTP credentials (password was already created)
+            CredentialModel otp1 = OTPCredentialModel.createFromPolicy(realm, "secret1");
+            CredentialModel otp2 = OTPCredentialModel.createFromPolicy(realm, "secret2");
+            otp1 = currentSession.userCredentialManager().createCredential(realm, user, otp1);
+            otp2 = currentSession.userCredentialManager().createCredential(realm, user, otp2);
+            otp1Id.set(otp1.getId());
+            otp2Id.set(otp2.getId());
+        });
+
+
+        KeycloakModelUtils.runJobInTransaction(session.getKeycloakSessionFactory(), (KeycloakSession currentSession) -> {
+            RealmModel realm = currentSession.realms().getRealmByName("test");
+            UserModel user = currentSession.users().getUserByUsername("thor", realm);
+
+            // Assert priorities: password, otp1, otp2
+            List<CredentialModel> list = currentSession.userCredentialManager().getStoredCredentials(realm, user);
+            assertOrder(list, passwordId.get(), otp1Id.get(), otp2Id.get());
+
+            // Assert can't move password when newPreviousCredential not found
+            assertFalse(currentSession.userCredentialManager().moveCredentialTo(realm, user, passwordId.get(), "not-known"));
+
+            // Assert can't move credential when not found
+            assertFalse(currentSession.userCredentialManager().moveCredentialTo(realm, user, "not-known", otp2Id.get()));
+
+            // Move otp2 up
+            assertTrue(currentSession.userCredentialManager().moveCredentialTo(realm, user, otp2Id.get(), passwordId.get()));
+        });
+
+        KeycloakModelUtils.runJobInTransaction(session.getKeycloakSessionFactory(), (KeycloakSession currentSession) -> {
+            RealmModel realm = currentSession.realms().getRealmByName("test");
+            UserModel user = currentSession.users().getUserByUsername("thor", realm);
+
+            // Assert priorities: password, otp2, otp1
+            List<CredentialModel> list = currentSession.userCredentialManager().getStoredCredentials(realm, user);
+            assertOrder(list, passwordId.get(), otp2Id.get(), otp1Id.get());
+
+            // Move otp2 to the top
+            org.keycloak.testsuite.Assert.assertTrue(currentSession.userCredentialManager().moveCredentialTo(realm, user, otp2Id.get(), null));
+        });
+
+        KeycloakModelUtils.runJobInTransaction(session.getKeycloakSessionFactory(), (KeycloakSession currentSession) -> {
+            RealmModel realm = currentSession.realms().getRealmByName("test");
+            UserModel user = currentSession.users().getUserByUsername("thor", realm);
+
+            // Assert priorities: otp2, password, otp1
+            List<CredentialModel> list = currentSession.userCredentialManager().getStoredCredentials(realm, user);
+            assertOrder(list, otp2Id.get(), passwordId.get(), otp1Id.get());
+
+            // Move password down
+            assertTrue(currentSession.userCredentialManager().moveCredentialTo(realm, user, passwordId.get(), otp1Id.get()));
+        });
+
+        KeycloakModelUtils.runJobInTransaction(session.getKeycloakSessionFactory(), (KeycloakSession currentSession) -> {
+            RealmModel realm = currentSession.realms().getRealmByName("test");
+            UserModel user = currentSession.users().getUserByUsername("thor", realm);
+
+            // Assert priorities: otp2, otp1, password
+            List<CredentialModel> list = currentSession.userCredentialManager().getStoredCredentials(realm, user);
+            assertOrder(list, otp2Id.get(), otp1Id.get(), passwordId.get());
+
+            // Remove otp2 down two positions
+            assertTrue(currentSession.userCredentialManager().moveCredentialTo(realm, user, otp2Id.get(), passwordId.get()));
+        });
+
+        KeycloakModelUtils.runJobInTransaction(session.getKeycloakSessionFactory(), (KeycloakSession currentSession) -> {
+            RealmModel realm = currentSession.realms().getRealmByName("test");
+            UserModel user = currentSession.users().getUserByUsername("thor", realm);
+
+            // Assert priorities: otp2, otp1, password
+            List<CredentialModel> list = currentSession.userCredentialManager().getStoredCredentials(realm, user);
+            assertOrder(list, otp1Id.get(), passwordId.get(), otp2Id.get());
+
+            // Remove password
+            assertTrue(currentSession.userCredentialManager().removeStoredCredential(realm, user, passwordId.get()));
+        });
+
+        KeycloakModelUtils.runJobInTransaction(session.getKeycloakSessionFactory(), (KeycloakSession currentSession) -> {
+            RealmModel realm = currentSession.realms().getRealmByName("test");
+            UserModel user = currentSession.users().getUserByUsername("thor", realm);
+
+            // Assert priorities: otp2, password
+            List<CredentialModel> list = currentSession.userCredentialManager().getStoredCredentials(realm, user);
+            assertOrder(list, otp1Id.get(), otp2Id.get());
+        });
+    }
+
+    @Test
+    public void testCRUDCredentialsOfDifferentUser() {
+        // Create OTP credential for user1 in the federated storage
+        testingClient.server().run(session -> {
+            RealmModel realm = session.realms().getRealmByName("test");
+
+            UserModel user = session.users().getUserByUsername("thor", realm);
+            Assert.assertFalse(StorageId.isLocalStorage(user));
+
+            CredentialModel otp1 = OTPCredentialModel.createFromPolicy(realm, "secret1");
+            session.userCredentialManager().createCredential(realm, user, otp1);
+        });
+
+        UserResource user1 = ApiUtil.findUserByUsernameId(testRealmResource(), "thor");
+        CredentialRepresentation otpCredential = user1.credentials().stream()
+                .filter(credentialRep -> OTPCredentialModel.TYPE.equals(credentialRep.getType()))
+                .findFirst()
+                .get();
+
+        // Test that when admin operates on user "user2", who is saved in user-storage, he can't update, move or remove credentials of different user "user1"
+        UserResource user2 = ApiUtil.findUserByUsernameId(testRealmResource(), "tbrady");
+        try {
+            user2.setCredentialUserLabel(otpCredential.getId(), "new-label");
+            Assert.fail("Not expected to successfully update user label");
+        } catch (NotFoundException nfe) {
+            // Expected
+        }
+
+        try {
+            user2.moveCredentialToFirst(otpCredential.getId());
+            Assert.fail("Not expected to successfully move credential");
+        } catch (NotFoundException nfe) {
+            // Expected
+        }
+
+        try {
+            user2.removeCredential(otpCredential.getId());
+            Assert.fail("Not expected to successfully remove credential");
+        } catch (NotFoundException nfe) {
+            // Expected
+        }
+
+        // Assert credential was not removed or updated
+        CredentialRepresentation otpCredentialLoaded = user1.credentials().stream()
+                .filter(credentialRep -> OTPCredentialModel.TYPE.equals(credentialRep.getType()))
+                .findFirst()
+                .get();
+        Assert.assertTrue(ObjectUtil.isEqualOrBothNull(otpCredential.getUserLabel(), otpCredentialLoaded.getUserLabel()));
+        Assert.assertTrue(ObjectUtil.isEqualOrBothNull(otpCredential.getPriority(), otpCredentialLoaded.getPriority()));
+    }
+
+
+    private void assertOrder(List<CredentialModel> creds, String... expectedIds) {
+        org.keycloak.testsuite.Assert.assertEquals(expectedIds.length, creds.size());
+
+        if (creds.size() == 0) return;
+
+        for (int i=0 ; i<expectedIds.length ; i++) {
+            org.keycloak.testsuite.Assert.assertEquals(creds.get(i).getId(), expectedIds[i]);
+        }
     }
 
 }

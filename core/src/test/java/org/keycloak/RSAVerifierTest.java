@@ -98,7 +98,7 @@ public class RSAVerifierTest {
     }
 
     @Test
-    public void testPemWriter() throws Exception {
+    public void testPemWriter() {
         PublicKey realmPublicKey = idpPair.getPublic();
         StringWriter sw = new StringWriter();
         PEMWriter writer = new PEMWriter(sw);
@@ -152,7 +152,7 @@ public class RSAVerifierTest {
 
 
     @Test
-    public void testBadSignature() throws Exception {
+    public void testBadSignature() {
 
         String encoded = new JWSBuilder()
                 .jsonContent(token)
@@ -183,7 +183,7 @@ public class RSAVerifierTest {
     }
 
     @Test
-    public void testNotBeforeBad() throws Exception {
+    public void testNotBeforeBad() {
         token.notBefore(Time.currentTime() + 100);
 
         String encoded = new JWSBuilder()
@@ -216,7 +216,7 @@ public class RSAVerifierTest {
     }
 
     @Test
-    public void testExpirationBad() throws Exception {
+    public void testExpirationBad() {
         token.expiration(Time.currentTime() - 100);
 
         String encoded = new JWSBuilder()
@@ -232,7 +232,7 @@ public class RSAVerifierTest {
     }
 
     @Test
-    public void testTokenAuth() throws Exception {
+    public void testTokenAuth() {
         token = new AccessToken();
         token.subject("CN=Client")
                 .issuer("http://localhost:8080/auth/realms/demo")
@@ -248,8 +248,44 @@ public class RSAVerifierTest {
         AccessToken v = null;
         try {
             v = verifySkeletonKeyToken(encoded);
+            Assert.fail();
         } catch (VerificationException ignored) {
         }
+    }
+
+    @Test
+    public void testAudience() throws Exception {
+        token.addAudience("my-app");
+        token.addAudience("your-app");
+
+        String encoded = new JWSBuilder()
+                .jsonContent(token)
+                .rsa256(idpPair.getPrivate());
+
+        verifyAudience(encoded, "my-app");
+        verifyAudience(encoded, "your-app");
+
+        try {
+            verifyAudience(encoded, "other-app");
+            Assert.fail();
+        } catch (VerificationException ignored) {
+            System.out.println(ignored.getMessage());
+        }
+
+        try {
+            verifyAudience(encoded, null);
+            Assert.fail();
+        } catch (VerificationException ignored) {
+            System.out.println(ignored.getMessage());
+        }
+    }
+
+    private void verifyAudience(String encodedToken, String expectedAudience) throws VerificationException {
+        TokenVerifier.create(encodedToken, AccessToken.class)
+                .publicKey(idpPair.getPublic())
+                .realmUrl("http://localhost:8080/auth/realm")
+                .audience(expectedAudience)
+                .verify();
     }
 
 

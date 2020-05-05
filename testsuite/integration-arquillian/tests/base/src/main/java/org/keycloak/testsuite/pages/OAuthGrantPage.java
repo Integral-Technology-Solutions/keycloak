@@ -16,13 +16,17 @@
  */
 package org.keycloak.testsuite.pages;
 
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 
+import org.hamcrest.Matchers;
 import org.junit.Assert;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.FindBy;
+
+import static org.keycloak.testsuite.util.UIUtils.clickLink;
 
 /**
  * @author <a href="mailto:sthorger@redhat.com">Stian Thorgersen</a>
@@ -35,6 +39,7 @@ public class OAuthGrantPage extends LanguageComboboxAwarePage {
     public static final String ADDRESS_CONSENT_TEXT = "Address";
     public static final String PHONE_CONSENT_TEXT = "Phone number";
     public static final String OFFLINE_ACCESS_CONSENT_TEXT = "Offline Access";
+    public static final String ROLES_CONSENT_TEXT = "User roles";
 
     @FindBy(css = "input[name=\"accept\"]")
     private WebElement acceptButton;
@@ -43,11 +48,11 @@ public class OAuthGrantPage extends LanguageComboboxAwarePage {
 
 
     public void accept(){
-        acceptButton.click();
+        clickLink(acceptButton);
     }
 
     public void cancel(){
-        cancelButton.click();
+        clickLink(cancelButton);
     }
 
     @Override
@@ -70,12 +75,11 @@ public class OAuthGrantPage extends LanguageComboboxAwarePage {
     }
 
 
-    public void assertGrants(String... grants) {
+    public void assertGrants(String... expectedGrants) {
         List<String> displayed = getDisplayedGrants();
-        Assert.assertEquals(displayed.size(), grants.length);
-        for (String grant : grants) {
-            Assert.assertTrue("Requested grant " + grant + " not present. Displayed grants: " + displayed, displayed.contains(grant));
-        }
+        List<String> expected = Arrays.asList(expectedGrants);
+        Assert.assertTrue("Not matched grants. Displayed grants: " + displayed + ", expected grants: " + expected,
+                displayed.containsAll(expected) && expected.containsAll(displayed));
     }
 
 }

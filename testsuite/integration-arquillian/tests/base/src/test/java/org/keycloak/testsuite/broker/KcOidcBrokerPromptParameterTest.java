@@ -1,11 +1,8 @@
 package org.keycloak.testsuite.broker;
 
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Lists;
 import org.keycloak.admin.client.resource.UsersResource;
-import org.keycloak.broker.oidc.mappers.ExternalKeycloakRoleToRoleMapper;
+import org.keycloak.models.IdentityProviderSyncMode;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
-import org.keycloak.representations.idm.IdentityProviderMapperRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.testsuite.Assert;
 import org.keycloak.testsuite.arquillian.SuiteContext;
@@ -25,26 +22,6 @@ public class KcOidcBrokerPromptParameterTest extends AbstractBrokerTest {
         return new KcOidcBrokerConfiguration2();
     }
 
-    @Override
-    protected Iterable<IdentityProviderMapperRepresentation> createIdentityProviderMappers() {
-        IdentityProviderMapperRepresentation attrMapper1 = new IdentityProviderMapperRepresentation();
-        attrMapper1.setName("manager-role-mapper");
-        attrMapper1.setIdentityProviderMapper(ExternalKeycloakRoleToRoleMapper.PROVIDER_ID);
-        attrMapper1.setConfig(ImmutableMap.<String,String>builder()
-                .put("external.role", "manager")
-                .put("role", "manager")
-                .build());
-
-        IdentityProviderMapperRepresentation attrMapper2 = new IdentityProviderMapperRepresentation();
-        attrMapper2.setName("user-role-mapper");
-        attrMapper2.setIdentityProviderMapper(ExternalKeycloakRoleToRoleMapper.PROVIDER_ID);
-        attrMapper2.setConfig(ImmutableMap.<String,String>builder()
-                .put("external.role", "user")
-                .put("role", "user")
-                .build());
-
-        return Lists.newArrayList(attrMapper1, attrMapper2);
-    }
 
     @Override
     protected void loginUser() {
@@ -53,7 +30,7 @@ public class KcOidcBrokerPromptParameterTest extends AbstractBrokerTest {
         driver.navigate().to(driver.getCurrentUrl() + "&" + OIDCLoginProtocol.PROMPT_PARAM + "=" + PROMPT_CONSENT);
 
         log.debug("Clicking social " + bc.getIDPAlias());
-        accountLoginPage.clickSocial(bc.getIDPAlias());
+        loginPage.clickSocial(bc.getIDPAlias());
 
         waitForPage(driver, "log in to", true);
 
@@ -67,7 +44,7 @@ public class KcOidcBrokerPromptParameterTest extends AbstractBrokerTest {
                 driver.getCurrentUrl().contains(OIDCLoginProtocol.PROMPT_PARAM + "=" + PROMPT_CONSENT));
 
         log.debug("Logging in");
-        accountLoginPage.login(bc.getUserLogin(), bc.getUserPassword());
+        loginPage.login(bc.getUserLogin(), bc.getUserPassword());
 
         waitForPage(driver, "update account information", false);
 
@@ -99,8 +76,9 @@ public class KcOidcBrokerPromptParameterTest extends AbstractBrokerTest {
     }
 
     private class KcOidcBrokerConfiguration2 extends KcOidcBrokerConfiguration {
-        protected void applyDefaultConfiguration(final SuiteContext suiteContext, final Map<String, String> config) {
-            super.applyDefaultConfiguration(suiteContext, config);
+        @Override
+        protected void applyDefaultConfiguration(final SuiteContext suiteContext, final Map<String, String> config, IdentityProviderSyncMode syncMode) {
+            super.applyDefaultConfiguration(suiteContext, config, syncMode);
             config.remove("prompt");
         }
     }

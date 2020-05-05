@@ -9,6 +9,7 @@ import org.keycloak.testsuite.console.page.clients.CreateClientForm;
 import org.keycloak.testsuite.console.page.fragment.OnOffSwitch;
 import org.keycloak.testsuite.page.Form;
 import org.keycloak.testsuite.util.Timer;
+import org.keycloak.testsuite.util.UIUtils;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.FindBy;
 import org.openqa.selenium.support.ui.Select;
@@ -32,6 +33,9 @@ public class ClientSettingsForm extends CreateClientForm {
     @FindBy(xpath = ".//div[@class='onoffswitch' and ./input[@id='enabled']]")
     private OnOffSwitch enabledSwitch;
 
+    @FindBy(xpath = ".//div[@class='onoffswitch' and ./input[@id='alwaysDisplayInConsole']]")
+    private OnOffSwitch alwaysDisplayInConsole;
+    
     @FindBy(xpath = ".//div[@class='onoffswitch' and ./input[@id='consentRequired']]")
     private OnOffSwitch consentRequiredSwitch;
 
@@ -88,19 +92,19 @@ public class ClientSettingsForm extends CreateClientForm {
     }
 
     public void setBaseUrl(String baseUrl) {
-        setInputValue(baseUrlInput, baseUrl);
+        UIUtils.setTextInputValue(baseUrlInput, baseUrl);
     }
 
     public String getBaseUrl() {
-        return getInputValue(baseUrlInput);
+        return UIUtils.getTextInputValue(baseUrlInput);
     }
 
     public void setAdminUrl(String adminUrl) {
-        setInputValue(adminUrlInput, adminUrl);
+        UIUtils.setTextInputValue(adminUrlInput, adminUrl);
     }
 
     public String getAdminUrl() {
-        return getInputValue(adminUrlInput);
+        return UIUtils.getTextInputValue(adminUrlInput);
     }
 
     public void addWebOrigin(String redirectUri) {
@@ -111,7 +115,7 @@ public class ClientSettingsForm extends CreateClientForm {
     public List<String> getWebOrigins() {
         List<String> values = new ArrayList<>();
         for (WebElement input : webOriginInputs) {
-            values.add(getInputValue(input));
+            values.add(UIUtils.getTextInputValue(input));
         }
         return values;
     }
@@ -130,11 +134,11 @@ public class ClientSettingsForm extends CreateClientForm {
     }
 
     public String getName() {
-        return getInputValue(nameInput);
+        return UIUtils.getTextInputValue(nameInput);
     }
 
     public void setName(String name) {
-        setInputValue(nameInput, name);
+        UIUtils.setTextInputValue(nameInput, name);
     }
 
     public boolean isEnabled() {
@@ -143,6 +147,18 @@ public class ClientSettingsForm extends CreateClientForm {
 
     public void setEnabled(boolean enabled) {
         enabledSwitch.setOn(enabled);
+    }
+    
+    public boolean isAlwaysDisplayInConsole() {
+        return alwaysDisplayInConsole.isOn();
+    }
+
+    public void setAlwaysDisplayInConsole(boolean enabled) {
+        alwaysDisplayInConsole.setOn(enabled);
+    }
+
+    public boolean isAlwaysDisplayInConsoleVisible() {
+        return alwaysDisplayInConsole.isVisible();
     }
 
     public boolean isConsentRequired() {
@@ -165,7 +181,7 @@ public class ClientSettingsForm extends CreateClientForm {
     public List<String> getRedirectUris() {
         List<String> values = new ArrayList<>();
         for (WebElement input : redirectUriInputs) {
-            values.add(getInputValue(input));
+            values.add(UIUtils.getTextInputValue(input));
         }
         return values;
     }
@@ -312,10 +328,10 @@ public class ClientSettingsForm extends CreateClientForm {
             fineGrainCollapsor.click();
             waitUntilElement(consumerServicePostInput).is().present();
 
-            setInputValue(consumerServicePostInput, attributes.get(SAML_ASSERTION_CONSUMER_URL_POST));
-            setInputValue(consumerServiceRedirectInput, attributes.get(SAML_ASSERTION_CONSUMER_URL_REDIRECT));
-            setInputValue(logoutPostBindingInput, attributes.get(SAML_SINGLE_LOGOUT_SERVICE_URL_POST));
-            setInputValue(logoutRedirectBindingInput, attributes.get(SAML_SINGLE_LOGOUT_SERVICE_URL_REDIRECT));
+            UIUtils.setTextInputValue(consumerServicePostInput, attributes.get(SAML_ASSERTION_CONSUMER_URL_POST));
+            UIUtils.setTextInputValue(consumerServiceRedirectInput, attributes.get(SAML_ASSERTION_CONSUMER_URL_REDIRECT));
+            UIUtils.setTextInputValue(logoutPostBindingInput, attributes.get(SAML_SINGLE_LOGOUT_SERVICE_URL_POST));
+            UIUtils.setTextInputValue(logoutRedirectBindingInput, attributes.get(SAML_SINGLE_LOGOUT_SERVICE_URL_REDIRECT));
         }
     }
 

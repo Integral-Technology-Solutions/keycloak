@@ -21,6 +21,8 @@ import org.jboss.logging.Logger;
 import org.junit.Assume;
 import org.keycloak.testsuite.arquillian.AuthServerTestEnricher;
 
+import static org.keycloak.testsuite.arquillian.AuthServerTestEnricher.AUTH_SERVER_SSL_REQUIRED;
+
 public class ContainerAssume {
 
     private static final Logger log = Logger.getLogger(ContainerAssume.class);
@@ -29,15 +31,24 @@ public class ContainerAssume {
         Assume.assumeFalse("Doesn't work on auth-server-undertow", 
                 AuthServerTestEnricher.AUTH_SERVER_CONTAINER.equals(AuthServerTestEnricher.AUTH_SERVER_CONTAINER_DEFAULT));
     }
+    public static void assumeAuthServerUndertow() {
+        Assume.assumeTrue("Only works on auth-server-undertow",
+                AuthServerTestEnricher.AUTH_SERVER_CONTAINER.equals(AuthServerTestEnricher.AUTH_SERVER_CONTAINER_DEFAULT));
+    }
+    
 
-    public static void assumeNotAppServerUndertow() {
-        log.warn("TODO: Not stable on app-server-undertow. "
-                + "It throws: KC-SERVICES0057: Logout for client '${CLIENT_NAME}' failed\n" 
-                + "org.apache.http.NoHttpResponseException: localhost:8280 failed to respond");
-        Assume.assumeFalse("Not stable on app-server-undertow. "
-                + "It throws: KC-SERVICES0057: Logout for client '${CLIENT_NAME}' failed\n" 
-                + "org.apache.http.NoHttpResponseException: localhost:8280 failed to respond",
-                System.getProperty("app.server", "undertow").equals("undertow"));
+    public static void assumeNotAuthServerRemote() {
+        Assume.assumeFalse("Doesn't work on auth-server-remote", 
+                AuthServerTestEnricher.AUTH_SERVER_CONTAINER.equals("auth-server-remote"));
     }
 
+    public static void assumeClusteredContainer() {
+        Assume.assumeTrue(
+              String.format("Ignoring test since %s is set to false",
+                    AuthServerTestEnricher.AUTH_SERVER_CLUSTER_PROPERTY), AuthServerTestEnricher.AUTH_SERVER_CLUSTER);
+    }
+
+    public static void assumeAuthServerSSL() {
+        Assume.assumeTrue("Only works with the SSL configured", AUTH_SERVER_SSL_REQUIRED);
+    }
 }

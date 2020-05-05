@@ -5,6 +5,8 @@
  */
 package org.keycloak.testsuite.broker;
 
+import org.keycloak.models.IdentityProviderModel;
+import org.keycloak.models.IdentityProviderSyncMode;
 import org.keycloak.protocol.ProtocolMapperUtils;
 import org.keycloak.protocol.saml.SamlConfigAttributes;
 import org.keycloak.protocol.saml.SamlProtocol;
@@ -26,9 +28,10 @@ import java.util.List;
 import java.util.Map;
 
 import static org.keycloak.broker.saml.SAMLIdentityProviderConfig.*;
+import static org.keycloak.protocol.saml.SamlProtocol.SAML_ASSERTION_CONSUMER_URL_POST_ATTRIBUTE;
+import static org.keycloak.protocol.saml.SamlProtocol.SAML_IDP_INITIATED_SSO_URL_NAME;
 import static org.keycloak.testsuite.broker.BrokerTestConstants.*;
 import static org.keycloak.testsuite.broker.BrokerTestTools.*;
-
 
 public class KcSamlBrokerConfiguration implements BrokerConfiguration {
 
@@ -50,6 +53,7 @@ public class KcSamlBrokerConfiguration implements BrokerConfiguration {
 
         realm.setEnabled(true);
         realm.setRealm(REALM_CONS_NAME);
+        realm.setResetPasswordAllowed(true);
 
         return realm;
     }
@@ -75,7 +79,7 @@ public class KcSamlBrokerConfiguration implements BrokerConfiguration {
         attributes.put(SamlConfigAttributes.SAML_AUTHNSTATEMENT, "true");
         attributes.put(SamlProtocol.SAML_SINGLE_LOGOUT_SERVICE_URL_POST_ATTRIBUTE,
                 getAuthRoot(suiteContext) + "/auth/realms/" + REALM_CONS_NAME + "/broker/" + IDP_SAML_ALIAS + "/endpoint");
-        attributes.put(SamlProtocol.SAML_ASSERTION_CONSUMER_URL_POST_ATTRIBUTE,
+        attributes.put(SAML_ASSERTION_CONSUMER_URL_POST_ATTRIBUTE,
                 getAuthRoot(suiteContext) + "/auth/realms/" + REALM_CONS_NAME + "/broker/" + IDP_SAML_ALIAS + "/endpoint");
         attributes.put(SamlConfigAttributes.SAML_FORCE_NAME_ID_FORMAT_ATTRIBUTE, "true");
         attributes.put(SamlConfigAttributes.SAML_NAME_ID_FORMAT_ATTRIBUTE, "username");
@@ -97,14 +101,34 @@ public class KcSamlBrokerConfiguration implements BrokerConfiguration {
         emailMapperConfig.put(AttributeStatementHelper.SAML_ATTRIBUTE_NAMEFORMAT, "urn:oasis:names:tc:SAML:2.0:attrname-format:uri");
         emailMapperConfig.put(AttributeStatementHelper.FRIENDLY_NAME, "email");
 
+        ProtocolMapperRepresentation dottedAttrMapper = new ProtocolMapperRepresentation();
+        dottedAttrMapper.setName("email - dotted");
+        dottedAttrMapper.setProtocol(SamlProtocol.LOGIN_PROTOCOL);
+        dottedAttrMapper.setProtocolMapper(UserAttributeStatementMapper.PROVIDER_ID);
+
+        Map<String, String> dottedEmailMapperConfig = dottedAttrMapper.getConfig();
+        dottedEmailMapperConfig.put(ProtocolMapperUtils.USER_ATTRIBUTE, "dotted.email");
+        dottedEmailMapperConfig.put(AttributeStatementHelper.SAML_ATTRIBUTE_NAME, "dotted.email");
+        dottedEmailMapperConfig.put(AttributeStatementHelper.SAML_ATTRIBUTE_NAMEFORMAT, "urn:oasis:names:tc:SAML:2.0:attrname-format:uri");
+
+        ProtocolMapperRepresentation nestedAttrMapper = new ProtocolMapperRepresentation();
+        nestedAttrMapper.setName("email - nested");
+        nestedAttrMapper.setProtocol(SamlProtocol.LOGIN_PROTOCOL);
+        nestedAttrMapper.setProtocolMapper(UserAttributeStatementMapper.PROVIDER_ID);
+
+        Map<String, String> nestedEmailMapperConfig = nestedAttrMapper.getConfig();
+        nestedEmailMapperConfig.put(ProtocolMapperUtils.USER_ATTRIBUTE, "nested.email");
+        nestedEmailMapperConfig.put(AttributeStatementHelper.SAML_ATTRIBUTE_NAME, "nested.email");
+        nestedEmailMapperConfig.put(AttributeStatementHelper.SAML_ATTRIBUTE_NAMEFORMAT, "urn:oasis:names:tc:SAML:2.0:attrname-format:uri");
+
         ProtocolMapperRepresentation userAttrMapper = new ProtocolMapperRepresentation();
         userAttrMapper.setName("attribute - name");
         userAttrMapper.setProtocol(SamlProtocol.LOGIN_PROTOCOL);
         userAttrMapper.setProtocolMapper(UserAttributeStatementMapper.PROVIDER_ID);
 
         Map<String, String> userAttrMapperConfig = userAttrMapper.getConfig();
-        userAttrMapperConfig.put(ProtocolMapperUtils.USER_ATTRIBUTE, AbstractUserAttributeMapperTest.ATTRIBUTE_TO_MAP_NAME);
-        userAttrMapperConfig.put(AttributeStatementHelper.SAML_ATTRIBUTE_NAME, AbstractUserAttributeMapperTest.ATTRIBUTE_TO_MAP_NAME);
+        userAttrMapperConfig.put(ProtocolMapperUtils.USER_ATTRIBUTE, KcOidcBrokerConfiguration.ATTRIBUTE_TO_MAP_NAME);
+        userAttrMapperConfig.put(AttributeStatementHelper.SAML_ATTRIBUTE_NAME, KcOidcBrokerConfiguration.ATTRIBUTE_TO_MAP_NAME);
         userAttrMapperConfig.put(AttributeStatementHelper.SAML_ATTRIBUTE_NAMEFORMAT, AttributeStatementHelper.BASIC);
         userAttrMapperConfig.put(AttributeStatementHelper.FRIENDLY_NAME, "");
 
@@ -115,11 +139,11 @@ public class KcSamlBrokerConfiguration implements BrokerConfiguration {
 
         Map<String, String> userFriendlyAttrMapperConfig = userFriendlyAttrMapper.getConfig();
         userFriendlyAttrMapperConfig.put(ProtocolMapperUtils.USER_ATTRIBUTE, AbstractUserAttributeMapperTest.ATTRIBUTE_TO_MAP_FRIENDLY_NAME);
-        userFriendlyAttrMapperConfig.put(AttributeStatementHelper.SAML_ATTRIBUTE_NAME, "");
+        userFriendlyAttrMapperConfig.put(AttributeStatementHelper.SAML_ATTRIBUTE_NAME, "urn:oid:1.2.3.4.5.6.7");
         userFriendlyAttrMapperConfig.put(AttributeStatementHelper.SAML_ATTRIBUTE_NAMEFORMAT, AttributeStatementHelper.BASIC);
         userFriendlyAttrMapperConfig.put(AttributeStatementHelper.FRIENDLY_NAME, AbstractUserAttributeMapperTest.ATTRIBUTE_TO_MAP_FRIENDLY_NAME);
 
-        client.setProtocolMappers(Arrays.asList(emailMapper, userAttrMapper, userFriendlyAttrMapper));
+        client.setProtocolMappers(Arrays.asList(emailMapper, dottedAttrMapper, nestedAttrMapper, userAttrMapper, userFriendlyAttrMapper));
 
         return client;
     }
@@ -133,7 +157,8 @@ public class KcSamlBrokerConfiguration implements BrokerConfiguration {
             .fullScopeEnabled(true)
             .protocol(SamlProtocol.LOGIN_PROTOCOL)
             .baseUrl("http://localhost:8080/sales-post")
-            .addRedirectUri("http://localhost:8080/sales-post/*")
+            .addRedirectUri("http://localhost:8180/sales-post/*")
+            .addRedirectUri("https://localhost:8543/sales-post/*")
             .attribute(SamlConfigAttributes.SAML_AUTHNSTATEMENT, SamlProtocol.ATTRIBUTE_TRUE_VALUE)
             .attribute(SamlConfigAttributes.SAML_CLIENT_SIGNATURE_ATTRIBUTE, SamlProtocol.ATTRIBUTE_FALSE_VALUE)
             .build(),
@@ -143,15 +168,28 @@ public class KcSamlBrokerConfiguration implements BrokerConfiguration {
             .fullScopeEnabled(true)
             .protocol(SamlProtocol.LOGIN_PROTOCOL)
             .baseUrl("http://localhost:8080/sales-post")
-            .addRedirectUri("http://localhost:8080/sales-post/*")
+            .addRedirectUri("http://localhost:8180/sales-post/*")
+            .addRedirectUri("https://localhost:8543/sales-post/*")
             .attribute(SamlConfigAttributes.SAML_AUTHNSTATEMENT, SamlProtocol.ATTRIBUTE_TRUE_VALUE)
             .attribute(SamlConfigAttributes.SAML_CLIENT_SIGNATURE_ATTRIBUTE, SamlProtocol.ATTRIBUTE_FALSE_VALUE)
+            .attribute(SAML_IDP_INITIATED_SSO_URL_NAME, "sales-post")
+            .attribute(SAML_ASSERTION_CONSUMER_URL_POST_ATTRIBUTE, "https://localhost:8180/sales-post/saml")
+            .build(),
+          ClientBuilder.create()
+            .id("broker-app")
+            .clientId("broker-app")
+            .name("broker-app")
+            .secret("broker-app-secret")
+            .enabled(true)
+            .directAccessGrants()
+            .addRedirectUri(getAuthRoot(suiteContext) + "/auth/*")
+            .baseUrl(getAuthRoot(suiteContext) + "/auth/realms/" + REALM_CONS_NAME + "/app")
             .build()
         );
     }
 
     @Override
-    public IdentityProviderRepresentation setUpIdentityProvider(SuiteContext suiteContext) {
+    public IdentityProviderRepresentation setUpIdentityProvider(SuiteContext suiteContext, IdentityProviderSyncMode syncMode) {
         IdentityProviderRepresentation idp = createIdentityProvider(IDP_SAML_ALIAS, IDP_SAML_PROVIDER_ID);
 
         idp.setTrustEmail(true);
@@ -160,10 +198,11 @@ public class KcSamlBrokerConfiguration implements BrokerConfiguration {
 
         Map<String, String> config = idp.getConfig();
 
+        config.put(IdentityProviderModel.SYNC_MODE, syncMode.toString());
         config.put(SINGLE_SIGN_ON_SERVICE_URL, getAuthRoot(suiteContext) + "/auth/realms/" + REALM_PROV_NAME + "/protocol/saml");
         config.put(SINGLE_LOGOUT_SERVICE_URL, getAuthRoot(suiteContext) + "/auth/realms/" + REALM_PROV_NAME + "/protocol/saml");
         config.put(NAME_ID_POLICY_FORMAT, "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress");
-        config.put(FORCE_AUTHN, "true");
+        config.put(FORCE_AUTHN, "false");
         config.put(POST_BINDING_RESPONSE, "true");
         config.put(POST_BINDING_AUTHN_REQUEST, "true");
         config.put(VALIDATE_SIGNATURE, "false");

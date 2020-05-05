@@ -29,6 +29,7 @@ import org.keycloak.models.AuthenticationFlowModel;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
+import org.keycloak.models.UserModel;
 import org.keycloak.models.UserSessionModel;
 import org.keycloak.models.utils.AuthenticationFlowResolver;
 import org.keycloak.protocol.LoginProtocol.Error;
@@ -44,7 +45,6 @@ import org.keycloak.sessions.RootAuthenticationSessionModel;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriInfo;
 
 /**
  * Common base class for Authorization REST endpoints implementation, which have to be implemented by each protocol.
@@ -61,8 +61,6 @@ public abstract class AuthorizationEndpointBase {
     protected EventBuilder event;
     protected AuthenticationManager authManager;
 
-    @Context
-    protected UriInfo uriInfo;
     @Context
     protected HttpHeaders headers;
     @Context
@@ -87,7 +85,7 @@ public abstract class AuthorizationEndpointBase {
                 .setEventBuilder(event)
                 .setRealm(realm)
                 .setSession(session)
-                .setUriInfo(uriInfo)
+                .setUriInfo(session.getContext().getUri())
                 .setRequest(httpRequest);
 
         authSession.setAuthNote(AuthenticationProcessor.CURRENT_FLOW_PATH, flowPath);
@@ -114,11 +112,23 @@ public abstract class AuthorizationEndpointBase {
             // This means that client is just checking if the user is already completely logged in.
             // We cancel login if any authentication action or required action is required
             try {
-                if (processor.authenticateOnly() == null) {
-                    // processor.attachSession();
+                Response challenge = processor.authenticateOnly();
+                if (challenge == null) {
+                    // nothing to do - user is already authenticated;
                 } else {
-                    Response response = protocol.sendError(authSession, Error.PASSIVE_LOGIN_REQUIRED);
-                    return response;
+                    // KEYCLOAK-8043: forward the request with prompt=none to the default provider.
+                    if ("true".equals(authSession.getAuthNote(AuthenticationProcessor.FORWARDED_PASSIVE_LOGIN))) {
+                        RestartLoginCookie.setRestartCookie(session, realm, clientConnection, session.getContext().getUri(), authSession);
+                        if (redirectToAuthentication) {
+                            return processor.redirectToFlow();
+                        }
+                        // no need to trigger authenticate, just return the challenge we got from authenticateOnly.
+                        return challenge;
+                    }
+                    else {
+                        Response response = protocol.sendError(authSession, Error.PASSIVE_LOGIN_REQUIRED);
+                        return response;
+                    }
                 }
 
                 AuthenticationManager.setClientScopesInSession(authSession);
@@ -128,15 +138,13 @@ public abstract class AuthorizationEndpointBase {
                     return response;
                 }
 
-                // Attach session once no requiredActions or other things are required
-                processor.attachSession();
             } catch (Exception e) {
                 return processor.handleBrowserException(e);
             }
             return processor.finishAuthentication(protocol);
         } else {
             try {
-                RestartLoginCookie.setRestartCookie(session, realm, clientConnection, uriInfo, authSession);
+                RestartLoginCookie.setRestartCookie(session, realm, clientConnection, session.getContext().getUri(), authSession);
                 if (redirectToAuthentication) {
                     return processor.redirectToFlow();
                 }
@@ -152,7 +160,7 @@ public abstract class AuthorizationEndpointBase {
     }
 
     protected void checkSsl() {
-        if (!uriInfo.getBaseUri().getScheme().equals("https") && realm.getSslRequired().isRequired(clientConnection)) {
+        if (!session.getContext().getUri().getBaseUri().getScheme().equals("https") && realm.getSslRequired().isRequired(clientConnection)) {
             event.error(Errors.SSL_REQUIRED);
             throw new ErrorPageException(session, Response.Status.BAD_REQUEST, Messages.HTTPS_REQUIRED);
         }
@@ -181,16 +189,20 @@ public abstract class AuthorizationEndpointBase {
             UserSessionModel userSession = userSessionCrossDCManager.getUserSessionIfExistsRemotely(manager, realm);
 
             if (userSession != null) {
-                String userSessionId = userSession.getId();
-                rootAuthSession = session.authenticationSessions().createRootAuthenticationSession(userSessionId, realm);
-                authSession = rootAuthSession.createAuthenticationSession(client);
-                logger.debugf("Sent request to authz endpoint. We don't have root authentication session with ID '%s' but we have userSession." +
-                        "Re-created root authentication session with same ID. Client is: %s . New authentication session tab ID: %s", userSessionId, client.getClientId(), authSession.getTabId());
+                UserModel user = userSession.getUser();
+                if (user != null && !user.isEnabled()) {
+                    authSession = createNewAuthenticationSession(manager, client);
+
+                    AuthenticationManager.backchannelLogout(session, userSession, true);
+                } else {
+                    String userSessionId = userSession.getId();
+                    rootAuthSession = session.authenticationSessions().createRootAuthenticationSession(userSessionId, realm);
+                    authSession = rootAuthSession.createAuthenticationSession(client);
+                    logger.debugf("Sent request to authz endpoint. We don't have root authentication session with ID '%s' but we have userSession." +
+                            "Re-created root authentication session with same ID. Client is: %s . New authentication session tab ID: %s", userSessionId, client.getClientId(), authSession.getTabId());
+                }
             } else {
-                rootAuthSession = manager.createAuthenticationSession(realm, true);
-                authSession = rootAuthSession.createAuthenticationSession(client);
-                logger.debugf("Sent request to authz endpoint. Created new root authentication session with ID '%s' . Client: %s . New authentication session tab ID: %s",
-                        rootAuthSession.getId(), client.getClientId(), authSession.getTabId());
+                authSession = createNewAuthenticationSession(manager, client);
             }
         }
 
@@ -200,4 +212,11 @@ public abstract class AuthorizationEndpointBase {
 
     }
 
+    private AuthenticationSessionModel createNewAuthenticationSession(AuthenticationSessionManager manager, ClientModel client) {
+        RootAuthenticationSessionModel rootAuthSession = manager.createAuthenticationSession(realm, true);
+        AuthenticationSessionModel authSession = rootAuthSession.createAuthenticationSession(client);
+        logger.debugf("Sent request to authz endpoint. Created new root authentication session with ID '%s' . Client: %s . New authentication session tab ID: %s",
+                rootAuthSession.getId(), client.getClientId(), authSession.getTabId());
+        return authSession;
+    }
 }

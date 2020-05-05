@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html class="layout-pf-alt layout-pf-alt-fixed">
+<html>
     <head>
         <title>${msg("accountManagementTitle")}</title>
 
@@ -9,13 +9,44 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
         <script>
+            <#if properties.developmentMode?has_content && properties.developmentMode == "true">
+            var developmentMode = true;
+            var reactRuntime = 'react.development.js';
+            var reactDOMRuntime = 'react-dom.development.js';
+            var reactRouterRuntime = 'react-router-dom.js';
+            <#else>
+            var developmentMode = false;
+            var reactRuntime = 'react.production.min.js';
+            var reactDOMRuntime = 'react-dom.production.min.js';
+            var reactRouterRuntime = 'react-router-dom.min.js';
+            </#if>
             var authUrl = '${authUrl}';
             var baseUrl = '${baseUrl}';
             var realm = '${realm.name}';
             var resourceUrl = '${resourceUrl}';
-            var isRegistrationEmailAsUsername = ${realm.registrationEmailAsUsername?c};
-            var isEditUserNameAllowed = ${realm.editUsernameAllowed?c};
-            var isInternationalizationEnabled = ${realm.internationalizationEnabled?c};
+            var isReactLoading = false;
+
+            <#if properties.logo?has_content>
+            var brandImg = resourceUrl + '${properties.logo}';
+            <#else>
+            var brandImg = resourceUrl + '/public/logo.svg';
+            </#if>
+
+            <#if properties.logoUrl?has_content>
+            var brandUrl = '${properties.logoUrl}';
+            <#else>
+            var brandUrl = baseUrl;
+            </#if>
+
+            var features = {
+                isRegistrationEmailAsUsername : ${realm.registrationEmailAsUsername?c},
+                isEditUserNameAllowed : ${realm.editUsernameAllowed?c},
+                isInternationalizationEnabled : ${realm.isInternationalizationEnabled()?c},
+                isLinkedAccountsEnabled : ${realm.identityFederationEnabled?c},
+                isEventsEnabled : ${isEventsEnabled?c},
+                isMyResourcesEnabled : ${(realm.userManagedAccessAllowed && isAuthorizationEnabled)?c},
+                isTotpConfigured : ${isTotpConfigured?c}
+            }
 
             var availableLocales = [];
             <#list supportedLocales as locale, label>
@@ -24,63 +55,42 @@
 
             <#if referrer??>
                 var referrer = '${referrer}';
-                var referrer_uri = '${referrer_uri}';
+                var referrerName = '${referrerName}';
+                var referrerUri = '${referrer_uri?no_esc}';
             </#if>
 
             <#if msg??>
                 var locale = '${locale}';
-                var l18n_msg = JSON.parse('${msgJSON?no_esc}');
+                var l18nMsg = JSON.parse('${msgJSON?no_esc}');
             <#else>
                 var locale = 'en';
-                var l18n_msg = {};
+                var l18Msg = {};
             </#if>
         </script>
 
-        <base href="${baseUrl}/">
+        <#if properties.favIcon?has_content>
+        <link rel="icon" href="${resourceUrl}${properties.favIcon}" type="image/x-icon"/>
+        <#else>
+        <link rel="icon" href="${resourceUrl}/public/favicon.ico" type="image/x-icon"/>
+        </#if>
 
-        <link rel="icon" href="${resourceUrl}/app/assets/img/favicon.ico" type="image/x-icon"/>
+        <script src="${authUrl}js/keycloak.js"></script>
 
-        <!-- PatternFly -->
-        <!-- iPad retina icon -->
-        <link rel="apple-touch-icon-precomposed" sizes="152x152"
-              href="${resourceUrl}/node_modules/patternfly/dist/img/apple-touch-icon-precomposed-152.png">
-        <!-- iPad retina icon (iOS < 7) -->
-        <link rel="apple-touch-icon-precomposed" sizes="144x144"
-              href="${resourceUrl}/node_modules/patternfly/dist/img/apple-touch-icon-precomposed-144.png">
-        <!-- iPad non-retina icon -->
-        <link rel="apple-touch-icon-precomposed" sizes="76x76"
-              href="${resourceUrl}/node_modules/patternfly/dist/img/apple-touch-icon-precomposed-76.png">
-        <!-- iPad non-retina icon (iOS < 7) -->
-        <link rel="apple-touch-icon-precomposed" sizes="72x72"
-              href="${resourceUrl}/node_modules/patternfly/dist/img/apple-touch-icon-precomposed-72.png">
-        <!-- iPhone 6 Plus icon -->
-        <link rel="apple-touch-icon-precomposed" sizes="120x120"
-              href="${resourceUrl}/node_modules/patternfly/dist/img/apple-touch-icon-precomposed-180.png">
-        <!-- iPhone retina icon (iOS < 7) -->
-        <link rel="apple-touch-icon-precomposed" sizes="114x114"
-              href="${resourceUrl}/node_modules/patternfly/dist/img/apple-touch-icon-precomposed-114.png">
-        <!-- iPhone non-retina icon (iOS < 7) -->
-        <link rel="apple-touch-icon-precomposed" sizes="57x57"
-              href="${resourceUrl}/node_modules/patternfly/dist/img/apple-touch-icon-precomposed-57.png">
-        <link href="${resourceUrl}/node_modules/patternfly/dist/css/patternfly.min.css" rel="stylesheet"
-              media="screen, print">
-        <link href="${resourceUrl}/node_modules/patternfly/dist/css/patternfly-additions.min.css" rel="stylesheet"
-              media="screen, print">
-        <link rel="stylesheet" href="${resourceUrl}/node_modules/patternfly-ng/dist/css/patternfly-ng.min.css" media="screen, print">
+        <#if properties.developmentMode?has_content && properties.developmentMode == "true">
+        <!-- Don't use this in production: -->
+        <script src="${resourceUrl}/node_modules/react/umd/react.development.js" crossorigin></script>
+        <script src="${resourceUrl}/node_modules/react-dom/umd/react-dom.development.js" crossorigin></script>
+        <script src="https://unpkg.com/babel-standalone@6.26.0/babel.min.js"></script>
+        </#if>
 
-        <script src="${resourceUrl}/node_modules/jquery/dist/jquery.min.js"></script>
-        <script src="${resourceUrl}/node_modules/bootstrap/dist/js/bootstrap.min.js"></script>
-        <script src="${resourceUrl}/node_modules/patternfly/dist/js/patternfly.min.js"></script>
-        <script src="${authUrl}/js/keycloak.js"></script>
-
-   <!-- TODO: We should save these css and js into variables and then load in
-        main.ts for better performance.  These might be loaded twice.
-        -->
-        <#if properties.styles?has_content>
-            <#list properties.styles?split(' ') as style>
-            <link href="${resourceUrl}/${style}" rel="stylesheet"/>
+        <#if properties.extensions?has_content>
+            <#list properties.extensions?split(' ') as script>
+                <#if properties.developmentMode?has_content && properties.developmentMode == "true">
+        <script type="text/babel" src="${resourceUrl}/${script}"></script>
+                <#else>
+        <script type="text/javascript" src="${resourceUrl}/${script}"></script>
+                </#if>
             </#list>
-            <a href="../../../../../../../../keycloak-quickstarts/app-profile-jee-html5/src/main/webapp/index.html"></a>
         </#if>
 
         <#if properties.scripts?has_content>
@@ -88,27 +98,41 @@
         <script type="text/javascript" src="${resourceUrl}/${script}"></script>
             </#list>
         </#if>
+
+        <#if properties.styles?has_content>
+            <#list properties.styles?split(' ') as style>
+            <link href="${resourceUrl}/${style}" rel="stylesheet"/>
+            </#list>
+        </#if>
+
+        <link href="${resourceUrl}/public/layout.css" rel="stylesheet"/>
     </head>
 
     <body>
 
         <script>
-            var keycloak = Keycloak('${authUrl}/realms/${realm.name}/account/keycloak.json');
-            var loadjs = function (url,loadListener) {
-                    const script = document.createElement("script");
-                    script.src = resourceUrl + url;
-                    if (loadListener) script.addEventListener("load", loadListener);
-                    document.head.appendChild(script);
-                };
-            keycloak.init({onLoad: 'check-sso'}).success(function(authenticated) {
-                loadjs("/node_modules/core-js/client/shim.min.js", function(){
-                    loadjs("/node_modules/zone.js/dist/zone.min.js");
-                    loadjs("/node_modules/systemjs/dist/system.src.js", function() {
-                        loadjs("/systemjs.config.js");
-                        System.import('${resourceUrl}/main.js').catch(function (err) {
+            var keycloak = Keycloak({
+                authServerUrl: authUrl,
+                realm: realm,
+                clientId: 'account-console'
+            });
+            keycloak.init({onLoad: 'check-sso', pkceMethod: 'S256'}).success(function(authenticated) {
+                isReactLoading = true;
+                toggleReact();
+                if (!keycloak.authenticated) {
+                    document.getElementById("landingSignInButton").style.display='inline';
+                    document.getElementById("landingSignInLink").style.display='inline';
+                } else {
+                    document.getElementById("landingSignOutButton").style.display='inline';
+                    document.getElementById("landingSignOutLink").style.display='inline';
+                    document.getElementById("landingLoggedInUser").innerHTML = loggedInUserName('${msg("unknownUser")}', '${msg("fullName")}');
+                }
+
+                loadjs("/node_modules/systemjs/dist/system.src.js", function() {
+                    loadjs("/systemjs.config.js", function() {
+                        System.import('${resourceUrl}/Main.js').catch(function (err) {
                             console.error(err);
                         });
-                        if (!keycloak.authenticated) document.getElementById("signInButton").style.visibility='visible';
                     });
                 });
             }).error(function() {
@@ -116,122 +140,155 @@
             });
         </script>
 
+<div id="main_react_container" style="display:none;height:100%"></div>
 
-<!-- Top Navigation -->
-        <nav class="navbar navbar-pf-alt">
-
-            <div class="navbar-header">
-                <a href="http://www.keycloak.org" class="navbar-brand">
-                    <img class="navbar-brand-icon" type="image/svg+xml" src="${resourceUrl}/app/assets/img/keycloak-logo-min.png" alt="" width="auto" height="30px"/>
-                </a>
-            </div>
-            <nav class="collapse navbar-collapse">
-                <ul class="nav navbar-nav">
-                </ul>
-
-                <!-- This sign in button is only displayed in the rare case where we go directly to this page and we aren't logged in.
-                     Note javascript code above that changes its visibility for that case.  Also, because we are not logged in
-                     we are unable to localize the button's message.  Not sure what to do about that yet.
-                -->
-                <ul class="nav navbar-nav navbar-right navbar-iconic">
-                    <li><button id="signInButton" style="visibility:hidden" onclick="keycloak.login();" class="btn btn-primary btn-lg btn-sign" type="button">${msg("doLogIn")}</button></li>
-                    <#if realm.internationalizationEnabled  && supportedLocales?size gt 1>
-                        <li class="dropdown">
-                          <a href="#0" class="dropdown-toggle nav-item-iconic" id="dropdownMenu1" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                            ${msg("locale_" + locale)} <span class="caret"></span>
-                          </a>
-                          <ul class="dropdown-menu" aria-labelledby="dropdownMenu1">
-                          <#list supportedLocales as locale, label>
-                            <li><a href="${baseUrl}/?kc_locale=${locale}">${label}</a></li>
-                          </#list>
-                          </ul>
-                        </li>
-                    </#if>
-                </ul>
-            </nav>
-        </nav>
-
-<!--Top Nav -->
-
-<!-- Home Page -->
-
-    <div class="cards-pf" id="welcomeScreen">
-        <div class="text-center">
-          <h1>${msg("accountManagementWelcomeMessage")}</h1>
-        </div>
-        <div class="container-fluid container-cards-pf">
-            <div class="row row-cards-pf">
-                <div class="col-xs-12 col-sm-4 col-md-4 col-lg-3">
-                    <div class="card-pf card-pf-view card-pf-view-select card-pf-view-single-select">
-                        <div class="card-pf-body text-center row">
-                            <div class="card-pf-top-element col-xs-2 col-sm-12 col-md-12 col-lg-12">
-                                <span class="fa pficon-user card-pf-icon-circle"></span>
-                            </div>
-                            <div class="card-pf-content col-xs-10 col-sm-12 col-md-12 col-lg-12">
-                              <h2>${msg("personalInfoHtmlTitle")}</h2>
-                              <p class="card-pf-content-intro">${msg("personalInfoIntroMessage")}</p>
-                              <h3><a href="${baseUrl}/#/account">${msg("personalInfoHtmlTitle")}</a></h3>
-                            </div>
-                        </div>
-                    </div>
+<div id="spinner_screen" style="display:block; height:100%">
+    <div style="width: 320px; height: 328px; text-align: center; position: absolute; top:0;	bottom: 0; left: 0;	right: 0; margin: auto;">
+                <#if properties.logo?has_content>
+                <img src="${resourceUrl}${properties.logo}" alt="Logo" class="brand">
+                <#else>
+                <img src="${resourceUrl}/public/logo.svg" alt="Logo" class="brand">
+                </#if>
+                <p>${msg("loadingMessage")}</p>
+                <div >
+                    <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="margin: auto; background: rgb(255, 255, 255); display: block; shape-rendering: auto;" width="200px" height="200px" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid">
+                    <path d="M10 50A40 40 0 0 0 90 50A40 42 0 0 1 10 50" fill="#5DBCD2" stroke="none" transform="rotate(16.3145 50 51)">
+                        <animateTransform attributeName="transform" type="rotate" dur="1s" repeatCount="indefinite" keyTimes="0;1" values="0 50 51;360 50 51"></animateTransform>
+                    </path>
                 </div>
-                <div class="col-xs-12 col-sm-4 col-md-4 col-lg-3">
-                    <div class="card-pf card-pf-view card-pf-view-select card-pf-view-single-select">
-                        <div class="card-pf-body text-center row">
-                            <div class="card-pf-top-element col-xs-2 col-sm-12 col-md-12 col-lg-12">
-                                <span class="fa fa-shield card-pf-icon-circle"></span>
-                            </div>
-                            <div class="card-pf-content col-xs-10 col-sm-12 col-md-12 col-lg-12">
-                              <h2>${msg("accountSecurityTitle")}</h2>
-                              <p class="card-pf-content-intro">${msg("accountSecurityIntroMessage")}</p>
-                              <h3><a href="${baseUrl}/#/password">${msg("changePasswordHtmlTitle")}</a></h3>
-                              <h3><a href="${baseUrl}/#/authenticator">${msg("authenticatorTitle")}</a></h3>
-                              <h3><a href="${baseUrl}/#/device-activity">${msg("deviceActivityHtmlTitle")}</a></h3>
-                              <h3><a href="${baseUrl}/#/linked-accounts">${msg("linkedAccountsHtmlTitle")}</a></h3>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-xs-12 col-sm-4 col-md-4 col-lg-3">
-                    <div class="card-pf card-pf-view card-pf-view-select card-pf-view-single-select">
-                        <div class="card-pf-body text-center row">
-                            <div class="card-pf-top-element col-xs-2 col-sm-12 col-md-12 col-lg-12">
-                                <span class="fa fa-th card-pf-icon-circle"></span>
-                            </div>
-                            <div class="card-pf-content col-xs-10 col-sm-12 col-md-12 col-lg-12">
-                              <h2>${msg("applicationsHtmlTitle")}</h2>
-                              <p class="card-pf-content-intro">${msg("applicationsIntroMessage")}</p>
-                              <h3><a href="${baseUrl}/#/applications">${msg("applicationsHtmlTitle")}</a></h3>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-xs-12 col-sm-4 col-md-4 col-lg-3">
-                    <div class="card-pf card-pf-view card-pf-view-select card-pf-view-single-select">
-                        <div class="card-pf-body text-center row">
-                            <div class="card-pf-top-element col-xs-2 col-sm-12 col-md-12 col-lg-12">
-                                <span class="fa pficon-repository card-pf-icon-circle"></span>
-                            </div>
-                            <div class="card-pf-content col-xs-10 col-sm-12 col-md-12 col-lg-12">
-                              <h2>${msg("myResources")}</h2>
-                              <p class="card-pf-content-intro">${msg("resourceIntroMessage")}</p>
-                              <h3><a href="${baseUrl}/#/my-resources">${msg("myResources")}</a></h3>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
             </div>
         </div>
     </div>
+</div>
+
+<div id="welcomeScreen" style="display:none;height:100%">
+    <div class="pf-c-page" id="page-layout-default-nav">
+      <header role="banner" class="pf-c-page__header">
+        <div class="pf-c-page__header-brand">
+          <#if properties.logoUrl?has_content>
+          <a id="landingLogo" class="pf-c-page__header-brand-link" href="${properties.logoUrl}">
+          <#else>
+          <a id="landingLogo" class="pf-c-page__header-brand-link" href="${baseUrl}">
+          </#if>
+            <#if properties.logo?has_content>
+            <img class="pf-c-brand brand" src="${resourceUrl}${properties.logo}" alt="Logo">
+            <#else>
+            <img class="pf-c-brand brand" src="${resourceUrl}/public/logo.svg" alt="Logo">
+            </#if>
+          </a>
+        </div>
+        <div class="pf-c-page__header-tools">
+            <#if referrer?has_content && referrer_uri?has_content>
+            <div class="pf-c-page__header-tools-group pf-m-icons">
+              <a id="landingReferrerLink" href="${referrer_uri}" id="referrer" tabindex="0"><span class="pf-icon pf-icon-arrow"></span>${msg("backTo",referrerName)}</a>
+            </div>
+            </#if>
+
+            <div class="pf-c-page__header-tools-group pf-m-icons">
+              <button id="landingSignInButton" tabindex="0" style="display:none" onclick="keycloak.login();" class="pf-c-button pf-m-primary" type="button">${msg("doSignIn")}</button>
+              <button id="landingSignOutButton" tabindex="0" style="display:none" onclick="keycloak.logout();" class="pf-c-button pf-m-primary" type="button">${msg("doSignOut")}</button>
+            </div>
+
+            <div class="pf-l-toolbar__group" style="margin-left: 10px;">
+                <span id="landingLoggedInUser"></span>
+            </div>
+
+            <!-- Kebab for mobile -->
+            <div class="pf-c-page__header-tools-group">
+                <div id="landingMobileKebab" class="pf-c-dropdown pf-m-mobile" onclick="toggleMobileDropdown();"> <!-- pf-m-expanded -->
+                    <button aria-label="Actions" tabindex="0" id="landingMobileKebabButton" class="pf-c-dropdown__toggle pf-m-plain" type="button" aria-expanded="true" aria-haspopup="true">
+                        <i class="fas fa-ellipsis-v" aria-hidden="false"></i>
+                    </button>
+                    <ul id="landingMobileDropdown" aria-labelledby="landingMobileKebabButton" class="pf-c-dropdown__menu pf-m-align-right" role="menu" style="display:none">
+                        <#if referrer?has_content && referrer_uri?has_content>
+                        <li role="none">
+                            <a id="landingMobileReferrerLink" href="${referrer_uri}" role="menuitem" tabindex="0" aria-disabled="false" class="pf-c-dropdown__menu-item">${msg("backTo",referrerName)}</a>
+                        </li>
+                        </#if>
+
+                        <li id="landingSignInLink" role="none" style="display:none">
+                            <a href="#" onclick="keycloak.login();" role="menuitem" tabindex="0" aria-disabled="false" class="pf-c-dropdown__menu-item">${msg("doLogIn")}</a>
+                        </li>
+                        <li id="landingSignOutLink" role="none" style="display:none">
+                            <a href="#" onclick="keycloak.logout();" role="menuitem" tabindex="0" aria-disabled="false" class="pf-c-dropdown__menu-item">${msg("doSignOut")}</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+        </div> <!-- end header tools -->
+      </header>
+
+      <main role="main" class="pf-c-page__main">
+        <section class="pf-c-page__main-section pf-m-light">
+          <div class="pf-c-content" id="landingWelcomeMessage">
+            <h1>${msg("accountManagementWelcomeMessage")}</h1>
+          </div>
+        </section>
+        <section class="pf-c-page__main-section">
+          <div class="pf-l-gallery pf-m-gutter">
+            <div class="pf-l-gallery__item">
+              <div class="pf-c-card">
+                <div class="pf-c-card__header pf-c-content">
+                    <h2><i class="pf-icon pf-icon-user"></i>&nbsp${msg("personalInfoHtmlTitle")}</h2>
+                    <h6>${msg("personalInfoIntroMessage")}</h6>
+                </div>
+                <div class="pf-c-card__body pf-c-content">
+                    <h5 id="landingPersonalInfoLink" onclick="toggleReact()"><a href="#/app/personal-info">${msg("personalInfoHtmlTitle")}</a></h5>
+                </div>
+              </div>
+            </div>
+            <div class="pf-l-gallery__item">
+              <div class="pf-c-card">
+                <div class="pf-c-card__header pf-c-content">
+                    <h2><i class="pf-icon pf-icon-security"></i>&nbsp${msg("accountSecurityTitle")}</h2>
+                    <h6>${msg("accountSecurityIntroMessage")}</h6>
+                </div>
+                <div class="pf-c-card__body pf-c-content">
+                    <h5 id="landingSigningInLink" onclick="toggleReact()"><a href="#/app/security/signingin">${msg("signingIn")}</a></h5>
+                    <h5 id="landingDeviceActivityLink" onclick="toggleReact()"><a href="#/app/security/device-activity">${msg("deviceActivityHtmlTitle")}</a></h5>
+                    <h5 id="landingLinkedAccountsLink" style="display:none" onclick="toggleReact()"><a href="#/app/security/linked-accounts">${msg("linkedAccountsHtmlTitle")}</a></h5>
+                </div>
+              </div>
+            </div>
+            <div class="pf-l-gallery__item">
+              <div class="pf-c-card">
+                <div class="pf-c-card__header pf-c-content">
+                    <h2><i class="pf-icon pf-icon-applications"></i>&nbsp${msg("applicationsHtmlTitle")}</h2>
+                    <h6>${msg("applicationsIntroMessage")}</h6>
+                </div>
+                <div class="pf-c-card__body pf-c-content">
+                    <h5 id="landingApplicationsLink" onclick="toggleReact()"><a href="#/app/applications">${msg("applicationsHtmlTitle")}</a></h5>
+                </div>
+              </div>
+            </div>
+            <div class="pf-l-gallery__item" id="landingMyResourcesCard" style="display:none">
+              <div class="pf-c-card">
+                <div class="pf-c-card__header pf-c-content">
+                    <h2><i class="pf-icon pf-icon-repository"></i>&nbsp${msg("myResources")}</h2>
+                    <h6>${msg("resourceIntroMessage")}</h6>
+                </div>
+                <div class="pf-c-card__body pf-c-content">
+                    <h5 id="landingMyResourcesLink" onclick="toggleReact()"><a href="#/app/resources">${msg("myResources")}</a></h5>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+</div>
 
         <script>
-            var winHash = window.location.hash;
-            if ((winHash.indexOf('#/') == 0) && (!winHash.indexOf('#/&state') == 0)) {
-                document.getElementById("welcomeScreen").style.display='none';
-            }
+            if (features.isLinkedAccountsEnabled) {
+                document.getElementById("landingLinkedAccountsLink").style.display='block';
+            };
+
+            // Hidden until feature is complete.
+            if (features.isMyResourcesEnabled) {
+                document.getElementById("landingMyResourcesCard").style.display='block';
+            };
         </script>
 
-        <app-root></app-root>
     </body>
 </html>

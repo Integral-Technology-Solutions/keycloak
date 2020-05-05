@@ -36,7 +36,6 @@ import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
-import javax.ws.rs.core.UriInfo;
 
 /**
  * A token introspection endpoint based on RFC-7662.
@@ -55,9 +54,6 @@ public class TokenIntrospectionEndpoint {
 
     @Context
     private HttpHeaders headers;
-
-    @Context
-    private UriInfo uriInfo;
 
     @Context
     private ClientConnection clientConnection;
@@ -130,7 +126,7 @@ public class TokenIntrospectionEndpoint {
     }
 
     private void checkSsl() {
-        if (!uriInfo.getBaseUri().getScheme().equals("https") && realm.getSslRequired().isRequired(clientConnection)) {
+        if (!session.getContext().getUri().getBaseUri().getScheme().equals("https") && realm.getSslRequired().isRequired(clientConnection)) {
             throw new ErrorResponseException("invalid_request", "HTTPS required", Status.FORBIDDEN);
         }
     }

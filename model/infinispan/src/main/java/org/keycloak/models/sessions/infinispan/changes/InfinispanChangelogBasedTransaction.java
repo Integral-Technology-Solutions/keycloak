@@ -30,6 +30,7 @@ import org.keycloak.models.RealmModel;
 import org.keycloak.models.sessions.infinispan.CacheDecorators;
 import org.keycloak.models.sessions.infinispan.entities.SessionEntity;
 import org.keycloak.models.sessions.infinispan.remotestore.RemoteCacheInvoker;
+import org.keycloak.models.sessions.infinispan.util.InfinispanUtil;
 
 /**
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
@@ -59,7 +60,7 @@ public class InfinispanChangelogBasedTransaction<K, V extends SessionEntity> ext
             // Lookup entity from cache
             SessionEntityWrapper<V> wrappedEntity = cache.get(key);
             if (wrappedEntity == null) {
-                logger.warnf("Not present cache item for key %s", key);
+                logger.tracef("Not present cache item for key %s", key);
                 return;
             }
 
@@ -205,9 +206,12 @@ public class InfinispanChangelogBasedTransaction<K, V extends SessionEntity> ext
 
     private void replace(K key, MergedUpdate<V> task, SessionEntityWrapper<V> oldVersionEntity) {
         boolean replaced = false;
+        int iteration = 0;
         V session = oldVersionEntity.getEntity();
 
-        while (!replaced) {
+        while (!replaced && iteration < InfinispanUtil.MAXIMUM_REPLACE_RETRIES) {
+            iteration++;
+
             SessionEntityWrapper<V> newVersionEntity = generateNewVersionAndWrapEntity(session, oldVersionEntity.getLocalMetadata());
 
             // Atomic cluster-aware replace
@@ -231,9 +235,13 @@ public class InfinispanChangelogBasedTransaction<K, V extends SessionEntity> ext
                 task.runUpdate(session);
             } else {
                 if (logger.isTraceEnabled()) {
-                    logger.tracef("Replace SUCCESS for entity: %s . old version: %d, new version: %d", key, oldVersionEntity.getVersion(), newVersionEntity.getVersion());
+                    logger.tracef("Replace SUCCESS for entity: %s . old version: %s, new version: %s", key, oldVersionEntity.getVersion(), newVersionEntity.getVersion());
                 }
             }
+        }
+
+        if (!replaced) {
+            logger.warnf("Failed to replace entity '%s' in cache '%s'", key, cache.getName());
         }
 
     }

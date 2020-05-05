@@ -1,7 +1,10 @@
 package org.keycloak.testsuite.broker;
 
+import org.keycloak.models.IdentityProviderModel;
+import org.keycloak.models.IdentityProviderSyncMode;
 import org.keycloak.protocol.ProtocolMapperUtils;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
+import org.keycloak.protocol.oidc.mappers.HardcodedClaim;
 import org.keycloak.protocol.oidc.mappers.OIDCAttributeMapperHelper;
 import org.keycloak.protocol.oidc.mappers.UserAttributeMapper;
 import org.keycloak.protocol.oidc.mappers.UserPropertyMapper;
@@ -21,12 +24,17 @@ import static org.keycloak.testsuite.broker.BrokerTestConstants.*;
 import static org.keycloak.testsuite.broker.BrokerTestTools.*;
 
 /**
- *
  * @author hmlnarik
  */
 public class KcOidcBrokerConfiguration implements BrokerConfiguration {
 
     public static final KcOidcBrokerConfiguration INSTANCE = new KcOidcBrokerConfiguration();
+
+    protected static final String ATTRIBUTE_TO_MAP_NAME = "user-attribute";
+    protected static final String ATTRIBUTE_TO_MAP_NAME_2 = "user-attribute-2";
+    public static final String USER_INFO_CLAIM = "user-claim";
+    public static final String HARDOCDED_CLAIM = "test";
+    public static final String HARDOCDED_VALUE = "value";
 
     @Override
     public RealmRepresentation createProviderRealm() {
@@ -42,6 +50,7 @@ public class KcOidcBrokerConfiguration implements BrokerConfiguration {
         RealmRepresentation realm = new RealmRepresentation();
         realm.setRealm(REALM_CONS_NAME);
         realm.setEnabled(true);
+        realm.setResetPasswordAllowed(true);
 
         return realm;
     }
@@ -74,41 +83,107 @@ public class KcOidcBrokerConfiguration implements BrokerConfiguration {
         emailMapperConfig.put(OIDCAttributeMapperHelper.INCLUDE_IN_ID_TOKEN, "true");
         emailMapperConfig.put(OIDCAttributeMapperHelper.INCLUDE_IN_USERINFO, "true");
 
+        ProtocolMapperRepresentation nestedAttrMapper = new ProtocolMapperRepresentation();
+        nestedAttrMapper.setName("attribute - nested claim");
+        nestedAttrMapper.setProtocol(OIDCLoginProtocol.LOGIN_PROTOCOL);
+        nestedAttrMapper.setProtocolMapper(UserAttributeMapper.PROVIDER_ID);
+
+        Map<String, String> nestedEmailMapperConfig = nestedAttrMapper.getConfig();
+        nestedEmailMapperConfig.put(ProtocolMapperUtils.USER_ATTRIBUTE, "nested.email");
+        nestedEmailMapperConfig.put(OIDCAttributeMapperHelper.TOKEN_CLAIM_NAME, "nested.email");
+        nestedEmailMapperConfig.put(OIDCAttributeMapperHelper.JSON_TYPE, ProviderConfigProperty.STRING_TYPE);
+        nestedEmailMapperConfig.put(OIDCAttributeMapperHelper.INCLUDE_IN_ACCESS_TOKEN, "true");
+        nestedEmailMapperConfig.put(OIDCAttributeMapperHelper.INCLUDE_IN_ID_TOKEN, "true");
+        nestedEmailMapperConfig.put(OIDCAttributeMapperHelper.INCLUDE_IN_USERINFO, "true");
+
+        ProtocolMapperRepresentation dottedAttrMapper = new ProtocolMapperRepresentation();
+        dottedAttrMapper.setName("attribute - claim with dot in name");
+        dottedAttrMapper.setProtocol(OIDCLoginProtocol.LOGIN_PROTOCOL);
+        dottedAttrMapper.setProtocolMapper(UserAttributeMapper.PROVIDER_ID);
+
+        Map<String, String> dottedEmailMapperConfig = dottedAttrMapper.getConfig();
+        dottedEmailMapperConfig.put(ProtocolMapperUtils.USER_ATTRIBUTE, "dotted.email");
+        dottedEmailMapperConfig.put(OIDCAttributeMapperHelper.TOKEN_CLAIM_NAME, "dotted\\.email");
+        dottedEmailMapperConfig.put(OIDCAttributeMapperHelper.JSON_TYPE, ProviderConfigProperty.STRING_TYPE);
+        dottedEmailMapperConfig.put(OIDCAttributeMapperHelper.INCLUDE_IN_ACCESS_TOKEN, "true");
+        dottedEmailMapperConfig.put(OIDCAttributeMapperHelper.INCLUDE_IN_ID_TOKEN, "true");
+        dottedEmailMapperConfig.put(OIDCAttributeMapperHelper.INCLUDE_IN_USERINFO, "true");
+
         ProtocolMapperRepresentation userAttrMapper = new ProtocolMapperRepresentation();
         userAttrMapper.setName("attribute - name");
         userAttrMapper.setProtocol(OIDCLoginProtocol.LOGIN_PROTOCOL);
         userAttrMapper.setProtocolMapper(UserAttributeMapper.PROVIDER_ID);
 
         Map<String, String> userAttrMapperConfig = userAttrMapper.getConfig();
-        userAttrMapperConfig.put(ProtocolMapperUtils.USER_ATTRIBUTE, AbstractUserAttributeMapperTest.ATTRIBUTE_TO_MAP_NAME);
-        userAttrMapperConfig.put(OIDCAttributeMapperHelper.TOKEN_CLAIM_NAME, AbstractUserAttributeMapperTest.ATTRIBUTE_TO_MAP_NAME);
+        userAttrMapperConfig.put(ProtocolMapperUtils.USER_ATTRIBUTE, ATTRIBUTE_TO_MAP_NAME);
+        userAttrMapperConfig.put(OIDCAttributeMapperHelper.TOKEN_CLAIM_NAME, ATTRIBUTE_TO_MAP_NAME);
         userAttrMapperConfig.put(OIDCAttributeMapperHelper.JSON_TYPE, ProviderConfigProperty.STRING_TYPE);
         userAttrMapperConfig.put(OIDCAttributeMapperHelper.INCLUDE_IN_ACCESS_TOKEN, "true");
         userAttrMapperConfig.put(OIDCAttributeMapperHelper.INCLUDE_IN_ID_TOKEN, "true");
         userAttrMapperConfig.put(OIDCAttributeMapperHelper.INCLUDE_IN_USERINFO, "true");
         userAttrMapperConfig.put(ProtocolMapperUtils.MULTIVALUED, "true");
 
-        client.setProtocolMappers(Arrays.asList(emailMapper, userAttrMapper));
+        ProtocolMapperRepresentation userAttrMapper2 = new ProtocolMapperRepresentation();
+        userAttrMapper2.setName("attribute - name - 2");
+        userAttrMapper2.setProtocol(OIDCLoginProtocol.LOGIN_PROTOCOL);
+        userAttrMapper2.setProtocolMapper(UserAttributeMapper.PROVIDER_ID);
+
+        Map<String, String> userAttrMapperConfig2 = userAttrMapper2.getConfig();
+        userAttrMapperConfig2.put(ProtocolMapperUtils.USER_ATTRIBUTE, ATTRIBUTE_TO_MAP_NAME_2);
+        userAttrMapperConfig2.put(OIDCAttributeMapperHelper.TOKEN_CLAIM_NAME, ATTRIBUTE_TO_MAP_NAME_2);
+        userAttrMapperConfig2.put(OIDCAttributeMapperHelper.JSON_TYPE, ProviderConfigProperty.STRING_TYPE);
+        userAttrMapperConfig2.put(OIDCAttributeMapperHelper.INCLUDE_IN_ACCESS_TOKEN, "true");
+        userAttrMapperConfig2.put(OIDCAttributeMapperHelper.INCLUDE_IN_ID_TOKEN, "true");
+        userAttrMapperConfig2.put(OIDCAttributeMapperHelper.INCLUDE_IN_USERINFO, "true");
+        userAttrMapperConfig2.put(ProtocolMapperUtils.MULTIVALUED, "true");
+
+        ProtocolMapperRepresentation hardcodedJsonClaim = new ProtocolMapperRepresentation();
+        hardcodedJsonClaim.setName("json-mapper");
+        hardcodedJsonClaim.setProtocol(OIDCLoginProtocol.LOGIN_PROTOCOL);
+        hardcodedJsonClaim.setProtocolMapper(HardcodedClaim.PROVIDER_ID);
+
+        Map<String, String> hardcodedJsonClaimMapperConfig = hardcodedJsonClaim.getConfig();
+        hardcodedJsonClaimMapperConfig.put(OIDCAttributeMapperHelper.TOKEN_CLAIM_NAME, KcOidcBrokerConfiguration.USER_INFO_CLAIM);
+        hardcodedJsonClaimMapperConfig.put(OIDCAttributeMapperHelper.JSON_TYPE, "JSON");
+        hardcodedJsonClaimMapperConfig.put(OIDCAttributeMapperHelper.INCLUDE_IN_ID_TOKEN, "true");
+        hardcodedJsonClaimMapperConfig.put(HardcodedClaim.CLAIM_VALUE, "{\"" + HARDOCDED_CLAIM + "\": \"" + HARDOCDED_VALUE + "\"}");
+
+        client.setProtocolMappers(Arrays.asList(emailMapper, userAttrMapper, userAttrMapper2, nestedAttrMapper, dottedAttrMapper, hardcodedJsonClaim));
 
         return Collections.singletonList(client);
     }
 
     @Override
     public List<ClientRepresentation> createConsumerClients(SuiteContext suiteContext) {
-        return null;
+        ClientRepresentation client = new ClientRepresentation();
+        client.setId("broker-app");
+        client.setClientId("broker-app");
+        client.setName("broker-app");
+        client.setSecret("broker-app-secret");
+        client.setEnabled(true);
+        client.setDirectAccessGrantsEnabled(true);
+
+        client.setRedirectUris(Collections.singletonList(getAuthRoot(suiteContext) +
+                "/auth/*"));
+
+        client.setBaseUrl(getAuthRoot(suiteContext) +
+                "/auth/realms/" + REALM_CONS_NAME + "/app");
+
+        return Collections.singletonList(client);
     }
 
     @Override
-    public IdentityProviderRepresentation setUpIdentityProvider(SuiteContext suiteContext) {
+    public IdentityProviderRepresentation setUpIdentityProvider(SuiteContext suiteContext, IdentityProviderSyncMode syncMode) {
         IdentityProviderRepresentation idp = createIdentityProvider(IDP_OIDC_ALIAS, IDP_OIDC_PROVIDER_ID);
 
         Map<String, String> config = idp.getConfig();
-        applyDefaultConfiguration(suiteContext, config);
+        applyDefaultConfiguration(suiteContext, config, syncMode);
 
         return idp;
     }
 
-    protected void applyDefaultConfiguration(final SuiteContext suiteContext, final Map<String, String> config) {
+    protected void applyDefaultConfiguration(final SuiteContext suiteContext, final Map<String, String> config, IdentityProviderSyncMode syncMode) {
+        config.put(IdentityProviderModel.SYNC_MODE, syncMode.toString());
         config.put("clientId", CLIENT_ID);
         config.put("clientSecret", CLIENT_SECRET);
         config.put("prompt", "login");

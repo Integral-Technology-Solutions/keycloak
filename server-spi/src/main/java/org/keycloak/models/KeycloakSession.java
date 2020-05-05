@@ -22,6 +22,7 @@ import org.keycloak.models.cache.UserCache;
 import org.keycloak.provider.Provider;
 import org.keycloak.sessions.AuthenticationSessionProvider;
 import org.keycloak.storage.federated.UserFederatedStorageProvider;
+import org.keycloak.vault.VaultTranscriber;
 
 import java.util.Set;
 
@@ -76,6 +77,17 @@ public interface KeycloakSession {
     Class<? extends Provider> getProviderClass(String providerClassName);
 
     Object getAttribute(String attribute);
+    <T> T getAttribute(String attribute, Class<T> clazz);
+    default <T> T getAttributeOrDefault(String attribute, T defaultValue) {
+        T value = (T) getAttribute(attribute);
+
+        if (value == null) {
+            return defaultValue;
+        }
+
+        return value;
+    }
+
     Object removeAttribute(String attribute);
     void setAttribute(String name, Object value);
 
@@ -178,4 +190,15 @@ public interface KeycloakSession {
      */
     ThemeManager theme();
 
+    /**
+     * Token manager
+     *
+     * @return
+     */
+    TokenManager tokens();
+
+    /**
+     * Vault transcriber
+     */
+    VaultTranscriber vault();
 }

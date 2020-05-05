@@ -1,7 +1,7 @@
 package org.keycloak.protocol.oidc.mappers;
 
-import org.keycloak.models.AuthenticatedClientSessionModel;
 import org.keycloak.models.ClientModel;
+import org.keycloak.models.ClientSessionContext;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.ProtocolMapperContainerModel;
 import org.keycloak.models.ProtocolMapperModel;
@@ -64,20 +64,20 @@ public abstract class AbstractPairwiseSubMapper extends AbstractOIDCProtocolMapp
     }
 
     @Override
-    public IDToken transformIDToken(IDToken token, ProtocolMapperModel mappingModel, KeycloakSession session, UserSessionModel userSession, AuthenticatedClientSessionModel clientSession) {
-        setIDTokenSubject(token, generateSub(mappingModel, getSectorIdentifier(clientSession.getClient(), mappingModel), userSession.getUser().getId()));
+    public IDToken transformIDToken(IDToken token, ProtocolMapperModel mappingModel, KeycloakSession session, UserSessionModel userSession, ClientSessionContext clientSessionCtx) {
+        setIDTokenSubject(token, generateSub(mappingModel, getSectorIdentifier(clientSessionCtx.getClientSession().getClient(), mappingModel), userSession.getUser().getId()));
         return token;
     }
 
     @Override
-    public AccessToken transformAccessToken(AccessToken token, ProtocolMapperModel mappingModel, KeycloakSession session, UserSessionModel userSession, AuthenticatedClientSessionModel clientSession) {
-        setAccessTokenSubject(token, generateSub(mappingModel, getSectorIdentifier(clientSession.getClient(), mappingModel), userSession.getUser().getId()));
+    public AccessToken transformAccessToken(AccessToken token, ProtocolMapperModel mappingModel, KeycloakSession session, UserSessionModel userSession, ClientSessionContext clientSessionCtx) {
+        setAccessTokenSubject(token, generateSub(mappingModel, getSectorIdentifier(clientSessionCtx.getClientSession().getClient(), mappingModel), userSession.getUser().getId()));
         return token;
     }
 
     @Override
-    public AccessToken transformUserInfoToken(AccessToken token, ProtocolMapperModel mappingModel, KeycloakSession session, UserSessionModel userSession, AuthenticatedClientSessionModel clientSession) {
-        setUserInfoTokenSubject(token, generateSub(mappingModel, getSectorIdentifier(clientSession.getClient(), mappingModel), userSession.getUser().getId()));
+    public AccessToken transformUserInfoToken(AccessToken token, ProtocolMapperModel mappingModel, KeycloakSession session, UserSessionModel userSession, ClientSessionContext clientSessionCtx) {
+        setUserInfoTokenSubject(token, generateSub(mappingModel, getSectorIdentifier(clientSessionCtx.getClientSession().getClient(), mappingModel), userSession.getUser().getId()));
         return token;
     }
 
@@ -90,7 +90,7 @@ public abstract class AbstractPairwiseSubMapper extends AbstractOIDCProtocolMapp
     }
 
     protected void setUserInfoTokenSubject(IDToken token, String pairwiseSub) {
-        token.getOtherClaims().put("sub", pairwiseSub);
+        token.setSubject(pairwiseSub);
     }
 
     @Override

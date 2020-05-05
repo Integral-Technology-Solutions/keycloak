@@ -21,22 +21,25 @@
     <parent>
         <groupId>org.keycloak.testsuite</groupId>
         <artifactId>integration-arquillian-servers-auth-server</artifactId>
-        <version>4.0.0.Final-SNAPSHOT</version>
+        <version>11.0.0-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>integration-arquillian-servers-auth-server-undertow</artifactId>
     <name>Auth Server - Undertow</name>
 
-    <dependencies>
+    <properties>
+        <common.resources>${basedir}/../jboss/common</common.resources>
+    </properties>
 
+    <dependencies>
         <dependency>
             <groupId>org.keycloak</groupId>
             <artifactId>keycloak-testsuite-utils</artifactId>
         </dependency>
         <dependency>
             <groupId>org.keycloak.testsuite</groupId>
-            <artifactId>integration-arquillian-servers-util</artifactId>
+            <artifactId>integration-arquillian-util</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
@@ -50,20 +53,7 @@
         <dependency>
             <groupId>org.jboss.resteasy</groupId>
             <artifactId>resteasy-jaxrs</artifactId>
-            <exclusions>
-                <exclusion>
-                    <groupId>log4j</groupId>
-                    <artifactId>log4j</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-api</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-simple</artifactId>
-                </exclusion>
-            </exclusions>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.jboss.resteasy</groupId>
@@ -89,5 +79,22 @@
             <artifactId>keycloak-servlet-filter-adapter</artifactId>
         </dependency>
     </dependencies>
+
+    <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>${common.resources}/keystore</directory>
+            </resource>
+            <resource>
+                <directory>${common.resources}/pki/root/ca</directory>
+                <includes>
+                    <include>certs/clients/*</include>
+                </includes>
+            </resource>
+        </resources>
+    </build>
 
 </project>

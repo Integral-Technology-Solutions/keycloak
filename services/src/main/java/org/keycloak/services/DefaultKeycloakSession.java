@@ -19,8 +19,10 @@ package org.keycloak.services;
 import org.keycloak.component.ComponentFactory;
 import org.keycloak.component.ComponentModel;
 import org.keycloak.credential.UserCredentialStoreManager;
+import org.keycloak.jose.jws.DefaultTokenManager;
 import org.keycloak.keys.DefaultKeyManager;
 import org.keycloak.models.ClientProvider;
+import org.keycloak.models.TokenManager;
 import org.keycloak.models.KeycloakContext;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
@@ -39,14 +41,17 @@ import org.keycloak.sessions.AuthenticationSessionProvider;
 import org.keycloak.storage.ClientStorageManager;
 import org.keycloak.storage.UserStorageManager;
 import org.keycloak.storage.federated.UserFederatedStorageProvider;
-import org.keycloak.theme.DefaultThemeManager;
+import org.keycloak.vault.DefaultVaultTranscriber;
+import org.keycloak.vault.VaultProvider;
+import org.keycloak.vault.VaultTranscriber;
 
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * @author <a href="mailto:sthorger@redhat.com">Stian Thorgersen</a>
@@ -55,7 +60,7 @@ public class DefaultKeycloakSession implements KeycloakSession {
 
     private final DefaultKeycloakSessionFactory factory;
     private final Map<Integer, Provider> providers = new HashMap<>();
-    private final List<Provider> closable = new LinkedList<Provider>();
+    private final List<Provider> closable = new LinkedList<>();
     private final DefaultKeycloakTransactionManager transactionManager;
     private final Map<String, Object> attributes = new HashMap<>();
     private RealmProvider model;
@@ -68,6 +73,8 @@ public class DefaultKeycloakSession implements KeycloakSession {
     private KeycloakContext context;
     private KeyManager keyManager;
     private ThemeManager themeManager;
+    private TokenManager tokenManager;
+    private VaultTranscriber vaultTranscriber;
 
     public DefaultKeycloakSession(DefaultKeycloakSessionFactory factory) {
         this.factory = factory;
@@ -103,6 +110,13 @@ public class DefaultKeycloakSession implements KeycloakSession {
     @Override
     public Object getAttribute(String attribute) {
         return attributes.get(attribute);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> T getAttribute(String attribute, Class<T> clazz) {
+        Object value = getAttribute(attribute);
+        return clazz.isInstance(value) ? (T) value : null;
     }
 
     @Override
@@ -177,27 +191,34 @@ public class DefaultKeycloakSession implements KeycloakSession {
         return userCredentialStorageManager;
     }
 
+    @SuppressWarnings("unchecked")
     public <T extends Provider> T getProvider(Class<T> clazz) {
         Integer hash = clazz.hashCode();
         T provider = (T) providers.get(hash);
+        // KEYCLOAK-11890 - Avoid using HashMap.computeIfAbsent() to implement logic in outer if() block below,
+        // since per JDK-8071667 the remapping function should not modify the map during computation. While
+        // allowed on JDK 1.8, attempt of such a modification throws ConcurrentModificationException with JDK 9+
         if (provider == null) {
             ProviderFactory<T> providerFactory = factory.getProviderFactory(clazz);
             if (providerFactory != null) {
-                provider = providerFactory.create(this);
+                provider = providerFactory.create(DefaultKeycloakSession.this);
                 providers.put(hash, provider);
             }
         }
         return provider;
     }
 
+    @SuppressWarnings("unchecked")
     public <T extends Provider> T getProvider(Class<T> clazz, String id) {
         Integer hash = clazz.hashCode() + id.hashCode();
         T provider = (T) providers.get(hash);
+        // KEYCLOAK-11890 - Avoid using HashMap.computeIfAbsent() to implement logic in outer if() block below,
+        // since per JDK-8071667 the remapping function should not modify the map during computation. While
+        // allowed on JDK 1.8, attempt of such a modification throws ConcurrentModificationException with JDK 9+
         if (provider == null) {
             ProviderFactory<T> providerFactory = factory.getProviderFactory(clazz, id);
-
             if (providerFactory != null) {
-                provider = providerFactory.create(this);
+                provider = providerFactory.create(DefaultKeycloakSession.this);
                 providers.put(hash, provider);
             }
         }
@@ -218,6 +239,7 @@ public class DefaultKeycloakSession implements KeycloakSession {
             return null;
         }
 
+        @SuppressWarnings("unchecked")
         ComponentFactory<T, T> componentFactory = (ComponentFactory<T, T>) providerFactory;
         T provider = componentFactory.create(this, componentModel);
         enlistForClose(provider);
@@ -232,11 +254,9 @@ public class DefaultKeycloakSession implements KeycloakSession {
 
     @Override
     public <T extends Provider> Set<T> getAllProviders(Class<T> clazz) {
-        Set<T> providers = new HashSet<T>();
-        for (String id : listProviderIds(clazz)) {
-            providers.add(getProvider(clazz, id));
-        }
-        return providers;
+        return listProviderIds(clazz).stream()
+            .map(id -> getProvider(clazz, id))
+            .collect(Collectors.toSet());
     }
 
     @Override
@@ -280,23 +300,36 @@ public class DefaultKeycloakSession implements KeycloakSession {
     @Override
     public ThemeManager theme() {
         if (themeManager == null) {
-            themeManager = new DefaultThemeManager(this);
+            themeManager = factory.getThemeManagerFactory().create(this);
         }
         return themeManager;
     }
 
+    @Override
+    public TokenManager tokens() {
+        if (tokenManager == null) {
+            tokenManager = new DefaultTokenManager(this);
+        }
+        return tokenManager;
+    }
+
+    @Override
+    public VaultTranscriber vault() {
+        if (this.vaultTranscriber == null) {
+            this.vaultTranscriber = new DefaultVaultTranscriber(this.getProvider(VaultProvider.class));
+        }
+        return this.vaultTranscriber;
+    }
+
     public void close() {
-        for (Provider p : providers.values()) {
+        Consumer<? super Provider> safeClose = p -> {
             try {
                 p.close();
             } catch (Exception e) {
+                // Ignore exception
             }
-        }
-        for (Provider p : closable) {
-            try {
-                p.close();
-            } catch (Exception e) {
-            }
-        }
+        };
+        providers.values().forEach(safeClose);
+        closable.forEach(safeClose);
     }
 }

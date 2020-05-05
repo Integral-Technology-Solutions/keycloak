@@ -50,12 +50,12 @@ public enum MembershipType {
         @Override
         public Set<LDAPDn> getLDAPSubgroups(GroupLDAPStorageMapper groupMapper, LDAPObject ldapGroup) {
             CommonLDAPGroupMapperConfig config = groupMapper.getConfig();
-            return getLDAPMembersWithParent(ldapGroup, config.getMembershipLdapAttribute(), LDAPDn.fromString(config.getLDAPGroupsDn()));
+            return getLDAPMembersWithParent(groupMapper.getLdapProvider(), ldapGroup, config.getMembershipLdapAttribute(), LDAPDn.fromString(config.getLDAPGroupsDn()));
         }
 
         // Get just those members of specified group, which are descendants of "requiredParentDn"
-        protected Set<LDAPDn> getLDAPMembersWithParent(LDAPObject ldapGroup, String membershipLdapAttribute, LDAPDn requiredParentDn) {
-            Set<String> allMemberships = LDAPUtils.getExistingMemberships(membershipLdapAttribute, ldapGroup);
+        protected Set<LDAPDn> getLDAPMembersWithParent(LDAPStorageProvider ldapProvider, LDAPObject ldapGroup, String membershipLdapAttribute, LDAPDn requiredParentDn) {
+            Set<String> allMemberships = LDAPUtils.getExistingMemberships(ldapProvider, membershipLdapAttribute, ldapGroup);
 
             // Filter and keep just descendants of requiredParentDn
             Set<LDAPDn> result = new HashSet<>();
@@ -74,7 +74,7 @@ public enum MembershipType {
             CommonLDAPGroupMapperConfig config = groupMapper.getConfig();
 
             LDAPDn usersDn = LDAPDn.fromString(ldapProvider.getLdapIdentityStore().getConfig().getUsersDn());
-            Set<LDAPDn> userDns = getLDAPMembersWithParent(ldapGroup, config.getMembershipLdapAttribute(), usersDn);
+            Set<LDAPDn> userDns = getLDAPMembersWithParent(ldapProvider, ldapGroup, config.getMembershipLdapAttribute(), usersDn);
 
             if (userDns == null) {
                 return Collections.emptyList();
@@ -93,20 +93,21 @@ public enum MembershipType {
             LDAPConfig ldapConfig = ldapProvider.getLdapIdentityStore().getConfig();
             if (ldapConfig.getUsernameLdapAttribute().equals(ldapConfig.getRdnLdapAttribute())) {
                 for (LDAPDn userDn : dns) {
-                    String username = userDn.getFirstRdnAttrValue();
+                    String username = userDn.getFirstRdn().getAttrValue(ldapConfig.getRdnLdapAttribute());
                     usernames.add(username);
                 }
             } else {
                 LDAPQuery query = LDAPUtils.createQueryForUserSearch(ldapProvider, realm);
                 LDAPQueryConditionsBuilder conditionsBuilder = new LDAPQueryConditionsBuilder();
-                Condition[] orSubconditions = new Condition[dns.size()];
-                int index = 0;
+                List<Condition> orSubconditions = new ArrayList<>();
                 for (LDAPDn userDn : dns) {
-                    Condition condition = conditionsBuilder.equal(userDn.getFirstRdnAttrName(), userDn.getFirstRdnAttrValue(), EscapeStrategy.DEFAULT);
-                    orSubconditions[index] = condition;
-                    index++;
+                    String firstRdnAttrValue = userDn.getFirstRdn().getAttrValue(ldapConfig.getRdnLdapAttribute());
+                    if (firstRdnAttrValue != null) {
+                        Condition condition = conditionsBuilder.equal(ldapConfig.getRdnLdapAttribute(), firstRdnAttrValue, EscapeStrategy.DEFAULT);
+                        orSubconditions.add(condition);
+                    }
                 }
-                Condition orCondition = conditionsBuilder.orCondition(orSubconditions);
+                Condition orCondition = conditionsBuilder.orCondition(orSubconditions.toArray(new Condition[] {}));
                 query.addWhereCondition(orCondition);
                 List<LDAPObject> ldapUsers = query.getResultList();
                 for (LDAPObject ldapUser : ldapUsers) {
@@ -139,7 +140,7 @@ public enum MembershipType {
             LDAPConfig ldapConfig = ldapProvider.getLdapIdentityStore().getConfig();
 
             String memberAttrName = groupMapper.getConfig().getMembershipLdapAttribute();
-            Set<String> memberUids = LDAPUtils.getExistingMemberships(memberAttrName, ldapGroup);
+            Set<String> memberUids = LDAPUtils.getExistingMemberships(ldapProvider, memberAttrName, ldapGroup);
 
             if (memberUids == null || memberUids.size() <= firstResult) {
                 return Collections.emptyList();

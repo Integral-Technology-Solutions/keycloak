@@ -18,7 +18,7 @@ package org.keycloak.services.resources.admin;
 
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.annotations.cache.NoCache;
-import org.jboss.resteasy.spi.NotFoundException;
+import javax.ws.rs.NotFoundException;
 import org.jboss.resteasy.spi.ResteasyProviderFactory;
 import org.keycloak.events.admin.OperationType;
 import org.keycloak.events.admin.ResourceType;
@@ -41,7 +41,6 @@ import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriInfo;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -60,9 +59,6 @@ public class ClientScopesResource {
 
     @Context
     protected KeycloakSession session;
-
-    @Context
-    protected UriInfo uriInfo;
 
     public ClientScopesResource(RealmModel realm, AdminPermissionEvaluator auth, AdminEventBuilder adminEvent) {
         this.realm = realm;
@@ -114,9 +110,9 @@ public class ClientScopesResource {
         try {
             ClientScopeModel clientModel = RepresentationToModel.createClientScope(session, realm, rep);
 
-            adminEvent.operation(OperationType.CREATE).resourcePath(uriInfo, clientModel.getId()).representation(rep).success();
+            adminEvent.operation(OperationType.CREATE).resourcePath(session.getContext().getUri(), clientModel.getId()).representation(rep).success();
 
-            return Response.created(uriInfo.getAbsolutePathBuilder().path(clientModel.getId()).build()).build();
+            return Response.created(session.getContext().getUri().getAbsolutePathBuilder().path(clientModel.getId()).build()).build();
         } catch (ModelDuplicateException e) {
             return ErrorResponse.exists("Client Scope " + rep.getName() + " already exists");
         }

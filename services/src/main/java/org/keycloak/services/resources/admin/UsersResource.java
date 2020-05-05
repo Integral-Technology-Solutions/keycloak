@@ -18,13 +18,14 @@ package org.keycloak.services.resources.admin;
 
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.annotations.cache.NoCache;
-import org.jboss.resteasy.spi.NotFoundException;
+import javax.ws.rs.NotFoundException;
 import org.jboss.resteasy.spi.ResteasyProviderFactory;
-import org.keycloak.services.resources.admin.permissions.AdminPermissionEvaluator;
 import org.keycloak.common.ClientConnection;
+import org.keycloak.common.util.ObjectUtil;
 import org.keycloak.events.admin.OperationType;
 import org.keycloak.events.admin.ResourceType;
 import org.keycloak.models.Constants;
+import org.keycloak.models.FederatedIdentityModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.ModelDuplicateException;
 import org.keycloak.models.ModelException;
@@ -32,9 +33,14 @@ import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.utils.ModelToRepresentation;
 import org.keycloak.models.utils.RepresentationToModel;
+import org.keycloak.policy.PasswordPolicyNotMetException;
+import org.keycloak.representations.idm.FederatedIdentityRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.services.ErrorResponse;
-import org.keycloak.services.*;
+import org.keycloak.services.ForbiddenException;
+import org.keycloak.services.resources.admin.permissions.AdminPermissionEvaluator;
+import org.keycloak.services.resources.admin.permissions.UserPermissionEvaluator;
+import org.keycloak.util.JsonSerialization;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.GET;
@@ -47,7 +53,7 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriInfo;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -55,6 +61,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Base resource for managing users
@@ -78,9 +85,6 @@ public class UsersResource {
     protected ClientConnection clientConnection;
 
     @Context
-    protected UriInfo uriInfo;
-
-    @Context
     protected KeycloakSession session;
 
     @Context
@@ -97,17 +101,24 @@ public class UsersResource {
      *
      * Username must be unique.
      *
-     * @param uriInfo
      * @param rep
      * @return
      */
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response createUser(final @Context UriInfo uriInfo, final UserRepresentation rep) {
+    public Response createUser(final UserRepresentation rep) {
         auth.users().requireManage();
 
+        String username = rep.getUsername();
+        if(realm.isRegistrationEmailAsUsername()) {
+            username = rep.getEmail();
+        }
+        if (ObjectUtil.isBlank(username)) {
+            return ErrorResponse.error("User name is missing", Response.Status.BAD_REQUEST);
+        }
+
         // Double-check duplicated username and email here due to federation
-        if (session.users().getUserByUsername(rep.getUsername(), realm) != null) {
+        if (session.users().getUserByUsername(username, realm) != null) {
             return ErrorResponse.exists("User exists with same username");
         }
         if (rep.getEmail() != null && !realm.isDuplicateEmailsAllowed() && session.users().getUserByEmail(rep.getEmail(), realm) != null) {
@@ -115,29 +126,37 @@ public class UsersResource {
         }
 
         try {
-            UserModel user = session.users().addUser(realm, rep.getUsername());
+            UserModel user = session.users().addUser(realm, username);
             Set<String> emptySet = Collections.emptySet();
 
             UserResource.updateUserFromRep(user, rep, emptySet, realm, session, false);
+            RepresentationToModel.createFederatedIdentities(rep, session, realm, user);
+            RepresentationToModel.createGroups(rep, realm, user);
+
             RepresentationToModel.createCredentials(rep, session, realm, user, true);
-            adminEvent.operation(OperationType.CREATE).resourcePath(uriInfo, user.getId()).representation(rep).success();
+            adminEvent.operation(OperationType.CREATE).resourcePath(session.getContext().getUri(), user.getId()).representation(rep).success();
 
             if (session.getTransactionManager().isActive()) {
                 session.getTransactionManager().commit();
             }
 
-            return Response.created(uriInfo.getAbsolutePathBuilder().path(user.getId()).build()).build();
+            return Response.created(session.getContext().getUri().getAbsolutePathBuilder().path(user.getId()).build()).build();
         } catch (ModelDuplicateException e) {
             if (session.getTransactionManager().isActive()) {
                 session.getTransactionManager().setRollbackOnly();
             }
             return ErrorResponse.exists("User exists with same username or email");
+        } catch (PasswordPolicyNotMetException e) {
+            if (session.getTransactionManager().isActive()) {
+                session.getTransactionManager().setRollbackOnly();
+            }
+            return ErrorResponse.error("Password policy not met", Response.Status.BAD_REQUEST);
         } catch (ModelException me){
             if (session.getTransactionManager().isActive()) {
                 session.getTransactionManager().setRollbackOnly();
             }
             logger.warn("Could not create user", me);
-            return ErrorResponse.exists("Could not create user");
+            return ErrorResponse.error("Could not create user", Response.Status.BAD_REQUEST);
         }
     }
     /**
@@ -183,13 +202,15 @@ public class UsersResource {
                                              @QueryParam("email") String email,
                                              @QueryParam("username") String username,
                                              @QueryParam("first") Integer firstResult,
-                                             @QueryParam("max") Integer maxResults) {
-        auth.users().requireQuery();
+                                             @QueryParam("max") Integer maxResults,
+                                             @QueryParam("briefRepresentation") Boolean briefRepresentation) {
+        UserPermissionEvaluator userPermissionEvaluator = auth.users();
+
+        userPermissionEvaluator.requireQuery();
 
         firstResult = firstResult != null ? firstResult : -1;
         maxResults = maxResults != null ? maxResults : Constants.DEFAULT_MAX_RESULTS;
 
-        List<UserRepresentation> results = new ArrayList<UserRepresentation>();
         List<UserModel> userModels = Collections.emptyList();
         if (search != null) {
             if (search.startsWith(SEARCH_ID_PARAMETER)) {
@@ -198,10 +219,12 @@ public class UsersResource {
                     userModels = Arrays.asList(userModel);
                 }
             } else {
-                userModels = session.users().searchForUser(search.trim(), realm, firstResult, maxResults);
+                Map<String, String> attributes = new HashMap<>();
+                attributes.put(UserModel.SEARCH, search.trim());
+                return searchForUser(attributes, realm, userPermissionEvaluator, briefRepresentation, firstResult, maxResults, false);
             }
         } else if (last != null || first != null || email != null || username != null) {
-            Map<String, String> attributes = new HashMap<String, String>();
+            Map<String, String> attributes = new HashMap<>();
             if (last != null) {
                 attributes.put(UserModel.LAST_NAME, last);
             }
@@ -214,28 +237,118 @@ public class UsersResource {
             if (username != null) {
                 attributes.put(UserModel.USERNAME, username);
             }
-            userModels = session.users().searchForUser(attributes, realm, firstResult, maxResults);
+            return searchForUser(attributes, realm, userPermissionEvaluator, briefRepresentation, firstResult, maxResults, true);
         } else {
-            userModels = session.users().getUsers(realm, firstResult, maxResults, false);
+            return searchForUser(new HashMap<>(), realm, userPermissionEvaluator, briefRepresentation, firstResult, maxResults, false);
         }
 
-        boolean canViewGlobal = auth.users().canView();
-        for (UserModel user : userModels) {
-            if (!canViewGlobal  && !auth.users().canView(user)) continue;
-            UserRepresentation userRep = ModelToRepresentation.toRepresentation(session, realm, user);
-            userRep.setAccess(auth.users().getAccess(user));
-            results.add(userRep);
-        }
-        return results;
+        return toRepresentation(realm, userPermissionEvaluator, briefRepresentation, userModels);
     }
 
+    /**
+     * Returns the number of users that match the given criteria.
+     * It can be called in three different ways.
+     * 1. Don't specify any criteria and pass {@code null}. The number of all
+     * users within that realm will be returned.
+     * <p>
+     * 2. If {@code search} is specified other criteria such as {@code last} will
+     * be ignored even though you set them. The {@code search} string will be
+     * matched against the first and last name, the username and the email of a
+     * user.
+     * <p>
+     * 3. If {@code search} is unspecified but any of {@code last}, {@code first},
+     * {@code email} or {@code username} those criteria are matched against their
+     * respective fields on a user entity. Combined with a logical and.
+     *
+     * @param search   arbitrary search string for all the fields below
+     * @param last     last name filter
+     * @param first    first name filter
+     * @param email    email filter
+     * @param username username filter
+     * @return the number of users that match the given criteria
+     */
     @Path("count")
     @GET
     @NoCache
     @Produces(MediaType.APPLICATION_JSON)
-    public Integer getUsersCount() {
-        auth.users().requireView();
+    public Integer getUsersCount(@QueryParam("search") String search,
+                                 @QueryParam("lastName") String last,
+                                 @QueryParam("firstName") String first,
+                                 @QueryParam("email") String email,
+                                 @QueryParam("username") String username) {
+        UserPermissionEvaluator userPermissionEvaluator = auth.users();
+        userPermissionEvaluator.requireQuery();
 
-        return session.users().getUsersCount(realm);
+        if (search != null) {
+            if (search.startsWith(SEARCH_ID_PARAMETER)) {
+                UserModel userModel = session.users().getUserById(search.substring(SEARCH_ID_PARAMETER.length()).trim(), realm);
+                return userModel != null && userPermissionEvaluator.canView(userModel) ? 1 : 0;
+            } else if (userPermissionEvaluator.canView()) {
+                return session.users().getUsersCount(search.trim(), realm);
+            } else {
+                return session.users().getUsersCount(search.trim(), realm, auth.groups().getGroupsWithViewPermission());
+            }
+        } else if (last != null || first != null || email != null || username != null) {
+            Map<String, String> parameters = new HashMap<>();
+            if (last != null) {
+                parameters.put(UserModel.LAST_NAME, last);
+            }
+            if (first != null) {
+                parameters.put(UserModel.FIRST_NAME, first);
+            }
+            if (email != null) {
+                parameters.put(UserModel.EMAIL, email);
+            }
+            if (username != null) {
+                parameters.put(UserModel.USERNAME, username);
+            }
+            if (userPermissionEvaluator.canView()) {
+                return session.users().getUsersCount(parameters, realm);
+            } else {
+                return session.users().getUsersCount(parameters, realm, auth.groups().getGroupsWithViewPermission());
+            }
+        } else if (userPermissionEvaluator.canView()) {
+            return session.users().getUsersCount(realm);
+        } else {
+            return session.users().getUsersCount(realm, auth.groups().getGroupsWithViewPermission());
+        }
+    }
+
+    private List<UserRepresentation> searchForUser(Map<String, String> attributes, RealmModel realm, UserPermissionEvaluator usersEvaluator, Boolean briefRepresentation, Integer firstResult, Integer maxResults, Boolean includeServiceAccounts) {
+        session.setAttribute(UserModel.INCLUDE_SERVICE_ACCOUNT, includeServiceAccounts);
+
+        if (!auth.users().canView()) {
+            Set<String> groupModels = auth.groups().getGroupsWithViewPermission();
+
+            if (!groupModels.isEmpty()) {
+                session.setAttribute(UserModel.GROUPS, groupModels);
+            }
+        }
+
+        List<UserModel> userModels = session.users().searchForUser(attributes, realm, firstResult, maxResults);
+
+        return toRepresentation(realm, usersEvaluator, briefRepresentation, userModels);
+    }
+
+    private List<UserRepresentation> toRepresentation(RealmModel realm, UserPermissionEvaluator usersEvaluator, Boolean briefRepresentation, List<UserModel> userModels) {
+        boolean briefRepresentationB = briefRepresentation != null && briefRepresentation;
+        List<UserRepresentation> results = new ArrayList<>();
+        boolean canViewGlobal = usersEvaluator.canView();
+
+        usersEvaluator.grantIfNoPermission(session.getAttribute(UserModel.GROUPS) != null);
+
+        for (UserModel user : userModels) {
+            if (!canViewGlobal) {
+                if (!usersEvaluator.canView(user)) {
+                    continue;
+                }
+            }
+            UserRepresentation userRep = briefRepresentationB
+                    ? ModelToRepresentation.toBriefRepresentation(user)
+                    : ModelToRepresentation.toRepresentation(session, realm, user);
+            userRep.setAccess(usersEvaluator.getAccess(user));
+            results.add(userRep);
+        }
+        return results;
     }
 }

@@ -53,8 +53,11 @@ import java.util.Set;
 @NamedQueries({
         @NamedQuery(name="getClientsByRealm", query="select client from ClientEntity client where client.realm = :realm"),
         @NamedQuery(name="getClientById", query="select client from ClientEntity client where client.id = :id and client.realm.id = :realm"),
-        @NamedQuery(name="getClientIdsByRealm", query="select client.id from ClientEntity client where client.realm.id = :realm"),
+        @NamedQuery(name="getClientIdsByRealm", query="select client.id from ClientEntity client where client.realm.id = :realm order by client.clientId"),
+        @NamedQuery(name="getAlwaysDisplayInConsoleClients", query="select client.id from ClientEntity client where client.alwaysDisplayInConsole = true and client.realm.id = :realm  order by client.clientId"),
         @NamedQuery(name="findClientIdByClientId", query="select client.id from ClientEntity client where client.clientId = :clientId and client.realm.id = :realm"),
+        @NamedQuery(name="searchClientsByClientId", query="select client.id from ClientEntity client where lower(client.clientId) like lower(concat('%',:clientId,'%')) and client.realm.id = :realm order by client.clientId"),
+        @NamedQuery(name="getRealmClientsCount", query="select count(client) from ClientEntity client where client.realm.id = :realm"),
         @NamedQuery(name="findClientByClientId", query="select client from ClientEntity client where client.clientId = :clientId and client.realm.id = :realm"),
 })
 public class ClientEntity {
@@ -73,6 +76,8 @@ public class ClientEntity {
     private String clientId;
     @Column(name="ENABLED")
     private boolean enabled;
+    @Column(name = "ALWAYS_DISPLAY_IN_CONSOLE")
+    private boolean alwaysDisplayInConsole;
     @Column(name="SECRET")
     private String secret;
     @Column(name="REGISTRATION_TOKEN")
@@ -104,11 +109,8 @@ public class ClientEntity {
     @CollectionTable(name = "REDIRECT_URIS", joinColumns={ @JoinColumn(name="CLIENT_ID") })
     protected Set<String> redirectUris = new HashSet<String>();
 
-    @ElementCollection
-    @MapKeyColumn(name="NAME")
-    @Column(name="VALUE", length = 4000)
-    @CollectionTable(name="CLIENT_ATTRIBUTES", joinColumns={ @JoinColumn(name="CLIENT_ID") })
-    protected Map<String, String> attributes = new HashMap<String, String>();
+    @OneToMany(cascade ={CascadeType.REMOVE}, orphanRemoval = true, mappedBy = "client")
+    protected Collection<ClientAttributeEntity> attributes = new ArrayList<>();
 
     @ElementCollection
     @MapKeyColumn(name="BINDING_NAME")
@@ -206,6 +208,14 @@ public class ClientEntity {
         this.enabled = enabled;
     }
 
+    public boolean isAlwaysDisplayInConsole() {
+        return alwaysDisplayInConsole;
+    }
+
+    public void setAlwaysDisplayInConsole(boolean alwaysDisplayInConsole) {
+        this.alwaysDisplayInConsole = alwaysDisplayInConsole;
+    }
+
     public String getClientId() {
         return clientId;
     }
@@ -278,11 +288,11 @@ public class ClientEntity {
         this.fullScopeAllowed = fullScopeAllowed;
     }
 
-    public Map<String, String> getAttributes() {
+    public Collection<ClientAttributeEntity> getAttributes() {
         return attributes;
     }
 
-    public void setAttributes(Map<String, String> attributes) {
+    public void setAttributes(Collection<ClientAttributeEntity> attributes) {
         this.attributes = attributes;
     }
 

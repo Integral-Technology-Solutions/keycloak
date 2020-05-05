@@ -42,6 +42,26 @@ route add -net 224.0.0.0 netmask 240.0.0.0 dev lo
 ifconfig lo multicast
 ```
 
+#### Quarkus
+
+To run the tests against a Quarkus Server:
+
+```
+ mvn -Pauth-server-quarkus -Dauth.server.ssl.required=false clean verify
+```
+
+NOTE: At the moment the Quarkus server does not support SSL, thus it *must* be disabled.
+
+To debug the server:
+
+```
+ mvn -Pauth-server-quarkus -Dauth.server.ssl.required=false -Dauth.server.debug=true clean verify
+```
+
+By default, debug port is `5005`. To change it, set the `auth.server.debug.port` system property to another port.
+
+NOTE: Not all tests are passing, this is a working in progress.
+
 ### App Servers / Adapter Tests
 
 Lifecycle of application server is always tied to a particular TestClass.
@@ -84,7 +104,7 @@ and the URL hierarchy is modeled by the class inheritance hierarchy (subclasses/
 
 The default browser for UI testing is `htmlunit` which is used for fast "headless" testing.
 Other browsers can be selected with the `-Dbrowser` property, for example `firefox`.
-See [HOW-TO-RUN.md](HOW-TO-RUN.md) and Arquillian Graphene documentation for more details.
+See [HOW-TO-RUN.md](HOW-TO-RUN.md) and Arquillian Drone documentation for more details.
 
 ### Utils classes
 UI testing is sometimes very tricky due to different demands and behaviours of different browsers and their drivers. So there are some very useful Utils classes which are already dealing with some common stability issues while testing. See `UIUtils`, `URLUtils` and `WaitUtils` classes in the Base Testsuite.
@@ -96,6 +116,15 @@ UI testing is sometimes very tricky due to different demands and behaviours of d
 
 The base testsuite contains custom Arquillian extensions and most functional tests.
 The other test modules depend on this module.
+
+### Base UI Testsuite
+Contains most of the UI-focused tests that don't cover Admin Console, i.e. all the parts of the server that are intended to be accessed by an end user.
+The tests placed here are exclusively covering the UI functionality of the server, i.e. checking if all the page elements are visible, links clickable etc., and are focused on simplicity and stability.
+This differs them from other integration tests and Admin Console UI tests.
+
+They are designed to work with most of the desktop browsers (HtmlUnit included) as well as mobile browsers (Chrome on Android and Safari on iOS). Please see [HOW-TO-RUN.md](HOW-TO-RUN.md) for details on supported browsers.
+
+The tests are place in a separate module (`tests/other/base-ui`) and are disabled by default.
 
 ### Admin Console UI Tests
 
@@ -166,7 +195,6 @@ integration-arquillian
       │
       ├──adapters         (common settings for all adapter test modules - will be moved into base)
       │  ├──jboss
-      │  ├──tomcat
       │  └──karaf
       │
       ├──console          

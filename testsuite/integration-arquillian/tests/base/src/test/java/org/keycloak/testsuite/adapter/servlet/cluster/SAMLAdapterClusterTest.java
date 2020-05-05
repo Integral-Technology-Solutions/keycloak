@@ -24,15 +24,14 @@ import org.keycloak.testsuite.adapter.AbstractSAMLAdapterClusteredTest;
 import org.keycloak.testsuite.adapter.page.EmployeeServletDistributable;
 import org.keycloak.testsuite.adapter.servlet.SendUsernameServlet;
 import org.keycloak.testsuite.arquillian.annotation.AppServerContainer;
-import org.keycloak.testsuite.arquillian.containers.ContainerConstants;
-
-import static org.keycloak.testsuite.adapter.AbstractServletsAdapterTest.samlServletDeployment;
+import org.keycloak.testsuite.utils.arquillian.ContainerConstants;
 
 /**
  *
  * @author hmlnarik
  */
 @AppServerContainer(ContainerConstants.APP_SERVER_WILDFLY_CLUSTER)
+@AppServerContainer(ContainerConstants.APP_SERVER_WILDFLY_DEPRECATED_CLUSTER)
 @AppServerContainer(ContainerConstants.APP_SERVER_EAP_CLUSTER)
 @AppServerContainer(ContainerConstants.APP_SERVER_EAP6_CLUSTER)
 public class SAMLAdapterClusterTest extends AbstractSAMLAdapterClusteredTest {
@@ -50,11 +49,5 @@ public class SAMLAdapterClusterTest extends AbstractSAMLAdapterClusteredTest {
     @Deployment(name = EmployeeServletDistributable.DEPLOYMENT_NAME + "_2", managed = false)
     protected static WebArchive employee2() {
         return employee();
-    }
-
-    @Override
-    protected void prepareServerDirectories() throws Exception {
-        prepareServerDirectory("standalone-cluster", "standalone-" + NODE_1_NAME);
-        prepareServerDirectory("standalone-cluster", "standalone-" + NODE_2_NAME);
     }
 }

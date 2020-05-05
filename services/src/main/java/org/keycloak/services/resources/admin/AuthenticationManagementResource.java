@@ -18,8 +18,8 @@ package org.keycloak.services.resources.admin;
 
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.annotations.cache.NoCache;
-import org.jboss.resteasy.spi.BadRequestException;
-import org.jboss.resteasy.spi.NotFoundException;
+import javax.ws.rs.BadRequestException;
+import javax.ws.rs.NotFoundException;
 import org.keycloak.authentication.AuthenticationFlow;
 import org.keycloak.authentication.Authenticator;
 import org.keycloak.authentication.ClientAuthenticator;
@@ -61,11 +61,9 @@ import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
-import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriBuilder;
-import javax.ws.rs.core.UriInfo;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -74,6 +72,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static javax.ws.rs.core.Response.Status.NOT_FOUND;
+import org.keycloak.utils.ReservedCharValidator;
 
 /**
  * @resource Authentication Management
@@ -85,8 +84,6 @@ public class AuthenticationManagementResource {
     private final KeycloakSession session;
     private AdminPermissionEvaluator auth;
     private AdminEventBuilder adminEvent;
-    @Context
-    private UriInfo uriInfo;
 
     protected static final Logger logger = Logger.getLogger(AuthenticationManagementResource.class);
 
@@ -139,7 +136,7 @@ public class AuthenticationManagementResource {
     @NoCache
     @Produces(MediaType.APPLICATION_JSON)
     public List<Map<String, Object>> getClientAuthenticatorProviders() {
-        auth.requireAnyAdminRole();
+        auth.realm().requireViewClientAuthenticatorProviders();
 
         List<ProviderFactory> factories = session.getKeycloakSessionFactory().getProviderFactories(ClientAuthenticator.class);
         return buildProviderMetadata(factories);
@@ -186,7 +183,7 @@ public class AuthenticationManagementResource {
     @NoCache
     @Produces(MediaType.APPLICATION_JSON)
     public List<AuthenticationFlowRepresentation> getFlows() {
-        auth.realm().requireViewRealm();
+        auth.realm().requireViewAuthenticationFlows();
 
         List<AuthenticationFlowRepresentation> flows = new LinkedList<>();
         for (AuthenticationFlowModel flow : realm.getAuthenticationFlows()) {
@@ -218,12 +215,14 @@ public class AuthenticationManagementResource {
         if (realm.getFlowByAlias(flow.getAlias()) != null) {
             return ErrorResponse.exists("Flow " + flow.getAlias() + " already exists");
         }
+        
+        ReservedCharValidator.validate(flow.getAlias());
 
         AuthenticationFlowModel createdModel = realm.addAuthenticationFlow(RepresentationToModel.toModel(flow));
 
         flow.setId(createdModel.getId());
-        adminEvent.operation(OperationType.CREATE).resourcePath(uriInfo, createdModel.getId()).representation(flow).success();
-        return Response.created(uriInfo.getAbsolutePathBuilder().path(flow.getId()).build()).build();
+        adminEvent.operation(OperationType.CREATE).resourcePath(session.getContext().getUri(), createdModel.getId()).representation(flow).success();
+        return Response.created(session.getContext().getUri().getAbsolutePathBuilder().path(flow.getId()).build()).build();
     }
 
     /**
@@ -244,6 +243,32 @@ public class AuthenticationManagementResource {
             throw new NotFoundException("Could not find flow with id");
         }
         return ModelToRepresentation.toRepresentation(realm, flow);
+    }
+
+    /**
+     * Update an authentication flow
+     *
+     * @param flow Authentication flow representation
+     * @return
+     */
+    @Path("/flows/{id}")
+    @PUT
+    @NoCache
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response updateFlow(@PathParam("id") String id, AuthenticationFlowRepresentation flow) {
+        auth.realm().requireManageRealm();
+
+        AuthenticationFlowRepresentation existingFlow = getFlow(id);
+
+        if (flow.getAlias() == null || flow.getAlias().isEmpty()) {
+            return ErrorResponse.exists("Failed to update flow with empty alias name");
+        }
+
+        flow.setId(existingFlow.getId());
+        realm.updateAuthenticationFlow(RepresentationToModel.toModel(flow));
+        adminEvent.operation(OperationType.UPDATE).resourcePath(session.getContext().getUri()).representation(flow).success();
+
+        return Response.accepted(flow).build();
     }
 
     /**
@@ -278,7 +303,7 @@ public class AuthenticationManagementResource {
         realm.removeAuthenticationFlow(flow);
 
         // Use just one event for top-level flow. Using separate events won't work properly for flows of depth 2 or bigger
-        if (isTopMostLevel) adminEvent.operation(OperationType.DELETE).resourcePath(uriInfo).success();
+        if (isTopMostLevel) adminEvent.operation(OperationType.DELETE).resourcePath(session.getContext().getUri()).success();
     }
 
     /**
@@ -309,7 +334,7 @@ public class AuthenticationManagementResource {
         AuthenticationFlowModel copy = copyFlow(realm, flow, newName);
 
         data.put("id", copy.getId());
-        adminEvent.operation(OperationType.CREATE).resourcePath(uriInfo).representation(data).success();
+        adminEvent.operation(OperationType.CREATE).resourcePath(session.getContext().getUri()).representation(data).success();
 
         return Response.status(Response.Status.CREATED).build();
 
@@ -389,10 +414,10 @@ public class AuthenticationManagementResource {
         execution = realm.addAuthenticatorExecution(execution);
 
         data.put("id", execution.getId());
-        adminEvent.operation(OperationType.CREATE).resource(ResourceType.AUTH_EXECUTION_FLOW).resourcePath(uriInfo).representation(data).success();
+        adminEvent.operation(OperationType.CREATE).resource(ResourceType.AUTH_EXECUTION_FLOW).resourcePath(session.getContext().getUri()).representation(data).success();
 
         String addExecutionPathSegment = UriBuilder.fromMethod(AuthenticationManagementResource.class, "addExecutionFlow").build(parentFlow.getAlias()).getPath();
-        return Response.created(uriInfo.getBaseUriBuilder().path(uriInfo.getPath().replace(addExecutionPathSegment, "")).path("flows").path(newFlow.getId()).build()).build();
+        return Response.created(session.getContext().getUri().getBaseUriBuilder().path(session.getContext().getUri().getPath().replace(addExecutionPathSegment, "")).path("flows").path(newFlow.getId()).build()).build();
     }
 
     private int getNextPriority(AuthenticationFlowModel parentFlow) {
@@ -437,7 +462,13 @@ public class AuthenticationManagementResource {
 
         AuthenticationExecutionModel execution = new AuthenticationExecutionModel();
         execution.setParentFlow(parentFlow.getId());
-        execution.setRequirement(AuthenticationExecutionModel.Requirement.DISABLED);
+
+        ConfigurableAuthenticatorFactory conf = (ConfigurableAuthenticatorFactory) f;
+        if (conf.getRequirementChoices().length == 1)
+            execution.setRequirement(conf.getRequirementChoices()[0]);
+        else
+            execution.setRequirement(AuthenticationExecutionModel.Requirement.DISABLED);
+
         execution.setAuthenticatorFlow(false);
         execution.setAuthenticator(provider);
         execution.setPriority(getNextPriority(parentFlow));
@@ -445,10 +476,10 @@ public class AuthenticationManagementResource {
         execution = realm.addAuthenticatorExecution(execution);
 
         data.put("id", execution.getId());
-        adminEvent.operation(OperationType.CREATE).resource(ResourceType.AUTH_EXECUTION).resourcePath(uriInfo).representation(data).success();
+        adminEvent.operation(OperationType.CREATE).resource(ResourceType.AUTH_EXECUTION).resourcePath(session.getContext().getUri()).representation(data).success();
 
         String addExecutionPathSegment = UriBuilder.fromMethod(AuthenticationManagementResource.class, "addExecutionToFlow").build(parentFlow.getAlias()).getPath();
-        return Response.created(uriInfo.getBaseUriBuilder().path(uriInfo.getPath().replace(addExecutionPathSegment, "")).path("executions").path(execution.getId()).build()).build();
+        return Response.created(session.getContext().getUri().getBaseUriBuilder().path(session.getContext().getUri().getPath().replace(addExecutionPathSegment, "")).path("executions").path(execution.getId()).build()).build();
     }
 
     /**
@@ -487,9 +518,10 @@ public class AuthenticationManagementResource {
             if (execution.isAuthenticatorFlow()) {
                 AuthenticationFlowModel flowRef = realm.getAuthenticationFlowById(execution.getFlowId());
                 if (AuthenticationFlow.BASIC_FLOW.equals(flowRef.getProviderId())) {
-                    rep.getRequirementChoices().add(AuthenticationExecutionModel.Requirement.ALTERNATIVE.name());
                     rep.getRequirementChoices().add(AuthenticationExecutionModel.Requirement.REQUIRED.name());
+                    rep.getRequirementChoices().add(AuthenticationExecutionModel.Requirement.ALTERNATIVE.name());
                     rep.getRequirementChoices().add(AuthenticationExecutionModel.Requirement.DISABLED.name());
+                    rep.getRequirementChoices().add(AuthenticationExecutionModel.Requirement.CONDITIONAL.name());
                 } else if (AuthenticationFlow.FORM_FLOW.equals(flowRef.getProviderId())) {
                     rep.getRequirementChoices().add(AuthenticationExecutionModel.Requirement.REQUIRED.name());
                     rep.getRequirementChoices().add(AuthenticationExecutionModel.Requirement.DISABLED.name());
@@ -566,7 +598,7 @@ public class AuthenticationManagementResource {
         if (!model.getRequirement().name().equals(rep.getRequirement())) {
             model.setRequirement(AuthenticationExecutionModel.Requirement.valueOf(rep.getRequirement()));
             realm.updateAuthenticatorExecution(model);
-            adminEvent.operation(OperationType.UPDATE).resource(ResourceType.AUTH_EXECUTION).resourcePath(uriInfo).representation(rep).success();
+            adminEvent.operation(OperationType.UPDATE).resource(ResourceType.AUTH_EXECUTION).resourcePath(session.getContext().getUri()).representation(rep).success();
         }
     }
 
@@ -610,8 +642,8 @@ public class AuthenticationManagementResource {
         model.setPriority(getNextPriority(parentFlow));
         model = realm.addAuthenticatorExecution(model);
 
-        adminEvent.operation(OperationType.CREATE).resource(ResourceType.AUTH_EXECUTION).resourcePath(uriInfo, model.getId()).representation(execution).success();
-        return Response.created(uriInfo.getAbsolutePathBuilder().path(model.getId()).build()).build();
+        adminEvent.operation(OperationType.CREATE).resource(ResourceType.AUTH_EXECUTION).resourcePath(session.getContext().getUri(), model.getId()).representation(execution).success();
+        return Response.created(session.getContext().getUri().getAbsolutePathBuilder().path(model.getId()).build()).build();
     }
 
     public AuthenticationFlowModel getParentFlow(AuthenticationExecutionModel model) {
@@ -664,7 +696,7 @@ public class AuthenticationManagementResource {
         model.setPriority(tmp);
         realm.updateAuthenticatorExecution(model);
 
-        adminEvent.operation(OperationType.UPDATE).resource(ResourceType.AUTH_EXECUTION).resourcePath(uriInfo).success();
+        adminEvent.operation(OperationType.UPDATE).resource(ResourceType.AUTH_EXECUTION).resourcePath(session.getContext().getUri()).success();
     }
 
     public List<AuthenticationExecutionModel> getSortedExecutions(AuthenticationFlowModel parentFlow) {
@@ -709,7 +741,7 @@ public class AuthenticationManagementResource {
         next.setPriority(tmp);
         realm.updateAuthenticatorExecution(next);
 
-        adminEvent.operation(OperationType.UPDATE).resource(ResourceType.AUTH_EXECUTION).resourcePath(uriInfo).success();
+        adminEvent.operation(OperationType.UPDATE).resource(ResourceType.AUTH_EXECUTION).resourcePath(session.getContext().getUri()).success();
     }
 
 
@@ -742,7 +774,7 @@ public class AuthenticationManagementResource {
 
         realm.removeAuthenticatorExecution(model);
 
-        adminEvent.operation(OperationType.DELETE).resource(ResourceType.AUTH_EXECUTION).resourcePath(uriInfo).success();
+        adminEvent.operation(OperationType.DELETE).resource(ResourceType.AUTH_EXECUTION).resourcePath(session.getContext().getUri()).success();
     }
 
 
@@ -759,6 +791,8 @@ public class AuthenticationManagementResource {
     @Consumes(MediaType.APPLICATION_JSON)
     public Response newExecutionConfig(@PathParam("executionId") String execution, AuthenticatorConfigRepresentation json) {
         auth.realm().requireManageRealm();
+        
+        ReservedCharValidator.validate(json.getAlias());
 
         AuthenticationExecutionModel model = realm.getAuthenticationExecutionById(execution);
         if (model == null) {
@@ -775,8 +809,8 @@ public class AuthenticationManagementResource {
         realm.updateAuthenticatorExecution(model);
 
         json.setId(config.getId());
-        adminEvent.operation(OperationType.CREATE).resource(ResourceType.AUTH_EXECUTION).resourcePath(uriInfo).representation(json).success();
-        return Response.created(uriInfo.getAbsolutePathBuilder().path(config.getId()).build()).build();
+        adminEvent.operation(OperationType.CREATE).resource(ResourceType.AUTH_EXECUTION).resourcePath(session.getContext().getUri()).representation(json).success();
+        return Response.created(session.getContext().getUri().getAbsolutePathBuilder().path(config.getId()).build()).build();
     }
 
     /**
@@ -854,14 +888,20 @@ public class AuthenticationManagementResource {
         requiredAction.setName(name);
         requiredAction.setProviderId(providerId);
         requiredAction.setDefaultAction(false);
+        requiredAction.setPriority(getNextRequiredActionPriority());
         requiredAction.setEnabled(true);
         requiredAction = realm.addRequiredActionProvider(requiredAction);
 
         data.put("id", requiredAction.getId());
-        adminEvent.operation(OperationType.CREATE).resource(ResourceType.REQUIRED_ACTION).resourcePath(uriInfo).representation(data).success();
+        adminEvent.operation(OperationType.CREATE).resource(ResourceType.REQUIRED_ACTION).resourcePath(session.getContext().getUri()).representation(data).success();
     }
 
+    private int getNextRequiredActionPriority() {
+        List<RequiredActionProviderModel> actions = realm.getRequiredActionProviders();
+        return actions.isEmpty() ? 0 : actions.get(actions.size() - 1).getPriority() + 1;
+    }
 
+    
     /**
      * Get required actions
      *
@@ -872,7 +912,7 @@ public class AuthenticationManagementResource {
     @Produces(MediaType.APPLICATION_JSON)
     @NoCache
     public List<RequiredActionProviderRepresentation> getRequiredActions() {
-        auth.requireAnyAdminRole();
+        auth.realm().requireViewRequiredActions();
 
         List<RequiredActionProviderRepresentation> list = new LinkedList<>();
         for (RequiredActionProviderModel model : realm.getRequiredActionProviders()) {
@@ -885,8 +925,10 @@ public class AuthenticationManagementResource {
     public static RequiredActionProviderRepresentation toRepresentation(RequiredActionProviderModel model) {
         RequiredActionProviderRepresentation rep = new RequiredActionProviderRepresentation();
         rep.setAlias(model.getAlias());
+        rep.setProviderId(model.getProviderId());
         rep.setName(model.getName());
         rep.setDefaultAction(model.isDefaultAction());
+        rep.setPriority(model.getPriority());
         rep.setEnabled(model.isEnabled());
         rep.setConfig(model.getConfig());
         return rep;
@@ -933,11 +975,12 @@ public class AuthenticationManagementResource {
         update.setAlias(rep.getAlias());
         update.setProviderId(model.getProviderId());
         update.setDefaultAction(rep.isDefaultAction());
+        update.setPriority(rep.getPriority());
         update.setEnabled(rep.isEnabled());
         update.setConfig(rep.getConfig());
         realm.updateRequiredActionProvider(update);
 
-        adminEvent.operation(OperationType.UPDATE).resource(ResourceType.REQUIRED_ACTION).resourcePath(uriInfo).representation(rep).success();
+        adminEvent.operation(OperationType.UPDATE).resource(ResourceType.REQUIRED_ACTION).resourcePath(session.getContext().getUri()).representation(rep).success();
     }
 
     /**
@@ -955,7 +998,75 @@ public class AuthenticationManagementResource {
         }
         realm.removeRequiredActionProvider(model);
 
-        adminEvent.operation(OperationType.DELETE).resource(ResourceType.REQUIRED_ACTION).resourcePath(uriInfo).success();
+        adminEvent.operation(OperationType.DELETE).resource(ResourceType.REQUIRED_ACTION).resourcePath(session.getContext().getUri()).success();
+    }
+
+    /**
+     * Raise required action's priority
+     *
+     * @param alias Alias of required action
+     */
+    @Path("required-actions/{alias}/raise-priority")
+    @POST
+    @NoCache
+    public void raiseRequiredActionPriority(@PathParam("alias") String alias) {
+        auth.realm().requireManageRealm();
+
+        RequiredActionProviderModel model = realm.getRequiredActionProviderByAlias(alias);
+        if (model == null) {
+            throw new NotFoundException("Failed to find required action.");
+        }
+
+        List<RequiredActionProviderModel> actions = realm.getRequiredActionProviders();
+        RequiredActionProviderModel previous = null;
+        for (RequiredActionProviderModel action : actions) {
+            if (action.getId().equals(model.getId())) {
+                break;
+            }
+            previous = action;
+        }
+        if (previous == null) return;
+        int tmp = previous.getPriority();
+        previous.setPriority(model.getPriority());
+        realm.updateRequiredActionProvider(previous);
+        model.setPriority(tmp);
+        realm.updateRequiredActionProvider(model);
+
+        adminEvent.operation(OperationType.UPDATE).resource(ResourceType.REQUIRED_ACTION).resourcePath(session.getContext().getUri()).success();
+    }
+
+    /**
+     * Lower required action's priority
+     *
+     * @param alias Alias of required action
+     */
+    @Path("/required-actions/{alias}/lower-priority")
+    @POST
+    @NoCache
+    public void lowerRequiredActionPriority(@PathParam("alias") String alias) {
+        auth.realm().requireManageRealm();
+
+        RequiredActionProviderModel model = realm.getRequiredActionProviderByAlias(alias);
+        if (model == null) {
+            throw new NotFoundException("Failed to find required action.");
+        }
+
+        List<RequiredActionProviderModel> actions = realm.getRequiredActionProviders();
+        int i = 0;
+        for (i = 0; i < actions.size(); i++) {
+            if (actions.get(i).getId().equals(model.getId())) {
+                break;
+            }
+        }
+        if (i + 1 >= actions.size()) return;
+        RequiredActionProviderModel next = actions.get(i + 1);
+        int tmp = model.getPriority();
+        model.setPriority(next.getPriority());
+        realm.updateRequiredActionProvider(model);
+        next.setPriority(tmp);
+        realm.updateRequiredActionProvider(next);
+
+        adminEvent.operation(OperationType.UPDATE).resource(ResourceType.REQUIRED_ACTION).resourcePath(session.getContext().getUri()).success();
     }
 
     /**
@@ -997,7 +1108,7 @@ public class AuthenticationManagementResource {
     @Produces(MediaType.APPLICATION_JSON)
     @NoCache
     public Map<String, List<ConfigPropertyRepresentation>> getPerClientConfigDescription() {
-        auth.requireAnyAdminRole();
+        auth.realm().requireViewClientAuthenticatorProviders();
 
         List<ProviderFactory> factories = session.getKeycloakSessionFactory().getProviderFactories(ClientAuthenticator.class);
 
@@ -1031,9 +1142,11 @@ public class AuthenticationManagementResource {
     public Response createAuthenticatorConfig(AuthenticatorConfigRepresentation rep) {
         auth.realm().requireManageRealm();
 
+        ReservedCharValidator.validate(rep.getAlias());
+        
         AuthenticatorConfigModel config = realm.addAuthenticatorConfig(RepresentationToModel.toModel(rep));
-        adminEvent.operation(OperationType.CREATE).resource(ResourceType.AUTHENTICATOR_CONFIG).resourcePath(uriInfo, config.getId()).representation(rep).success();
-        return Response.created(uriInfo.getAbsolutePathBuilder().path(config.getId()).build()).build();
+        adminEvent.operation(OperationType.CREATE).resource(ResourceType.AUTHENTICATOR_CONFIG).resourcePath(session.getContext().getUri(), config.getId()).representation(rep).success();
+        return Response.created(session.getContext().getUri().getAbsolutePathBuilder().path(config.getId()).build()).build();
     }
 
     /**
@@ -1070,7 +1183,6 @@ public class AuthenticationManagementResource {
             throw new NotFoundException("Could not find authenticator config");
 
         }
-        List<AuthenticationFlowModel> flows = new LinkedList<>();
         for (AuthenticationFlowModel flow : realm.getAuthenticationFlows()) {
             for (AuthenticationExecutionModel exe : realm.getAuthenticationExecutions(flow.getId())) {
                 if (id.equals(exe.getAuthenticatorConfig())) {
@@ -1082,7 +1194,7 @@ public class AuthenticationManagementResource {
 
         realm.removeAuthenticatorConfig(config);
 
-        adminEvent.operation(OperationType.DELETE).resource(ResourceType.AUTHENTICATOR_CONFIG).resourcePath(uriInfo).success();
+        adminEvent.operation(OperationType.DELETE).resource(ResourceType.AUTHENTICATOR_CONFIG).resourcePath(session.getContext().getUri()).success();
     }
 
     /**
@@ -1097,14 +1209,15 @@ public class AuthenticationManagementResource {
     public void updateAuthenticatorConfig(@PathParam("id") String id, AuthenticatorConfigRepresentation rep) {
         auth.realm().requireManageRealm();
 
+        ReservedCharValidator.validate(rep.getAlias());
         AuthenticatorConfigModel exists = realm.getAuthenticatorConfigById(id);
         if (exists == null) {
             throw new NotFoundException("Could not find authenticator config");
-
         }
+        
         exists.setAlias(rep.getAlias());
-        exists.setConfig(rep.getConfig());
+        exists.setConfig(RepresentationToModel.removeEmptyString(rep.getConfig()));
         realm.updateAuthenticatorConfig(exists);
-        adminEvent.operation(OperationType.UPDATE).resource(ResourceType.AUTHENTICATOR_CONFIG).resourcePath(uriInfo).representation(rep).success();
+        adminEvent.operation(OperationType.UPDATE).resource(ResourceType.AUTHENTICATOR_CONFIG).resourcePath(session.getContext().getUri()).representation(rep).success();
     }
 }

@@ -18,7 +18,6 @@ package org.keycloak.saml;
 
 import org.keycloak.dom.saml.v2.assertion.NameIDType;
 import org.keycloak.dom.saml.v2.protocol.AuthnRequestType;
-import org.keycloak.saml.common.exceptions.ConfigurationException;
 import org.keycloak.saml.processing.api.saml.v2.request.SAML2Request;
 import org.keycloak.saml.processing.core.saml.v2.common.IDGenerator;
 import org.keycloak.saml.processing.core.saml.v2.util.XMLTimeUtil;
@@ -56,11 +55,7 @@ public class SAML2AuthnRequestBuilder implements SamlProtocolExtensionsAwareBuil
     }
 
     public SAML2AuthnRequestBuilder() {
-        try {
-            this.authnRequestType = new AuthnRequestType(IDGenerator.create("ID_"), XMLTimeUtil.getIssueInstant());
-        } catch (ConfigurationException e) {
-            throw new RuntimeException("Could not create SAML AuthnRequest builder.", e);
-        }
+        this.authnRequestType = new AuthnRequestType(IDGenerator.create("ID_"), XMLTimeUtil.getIssueInstant());
     }
 
     public SAML2AuthnRequestBuilder assertionConsumerUrl(String assertionConsumerUrl) {
@@ -95,27 +90,31 @@ public class SAML2AuthnRequestBuilder implements SamlProtocolExtensionsAwareBuil
 
     public Document toDocument() {
         try {
-            AuthnRequestType authnRequestType = this.authnRequestType;
-
-            NameIDType nameIDType = new NameIDType();
-
-            nameIDType.setValue(this.issuer);
-
-            authnRequestType.setIssuer(nameIDType);
-
-            authnRequestType.setDestination(URI.create(this.destination));
-
-            if (! this.extensions.isEmpty()) {
-                ExtensionsType extensionsType = new ExtensionsType();
-                for (NodeGenerator extension : this.extensions) {
-                    extensionsType.addExtension(extension);
-                }
-                authnRequestType.setExtensions(extensionsType);
-            }
+            AuthnRequestType authnRequestType = createAuthnRequest();
 
             return new SAML2Request().convert(authnRequestType);
         } catch (Exception e) {
             throw new RuntimeException("Could not convert " + authnRequestType + " to a document.", e);
         }
+    }
+
+    public AuthnRequestType createAuthnRequest() {
+        AuthnRequestType res = this.authnRequestType;
+        NameIDType nameIDType = new NameIDType();
+        nameIDType.setValue(this.issuer);
+
+        res.setIssuer(nameIDType);
+
+        res.setDestination(URI.create(this.destination));
+
+        if (! this.extensions.isEmpty()) {
+            ExtensionsType extensionsType = new ExtensionsType();
+            for (NodeGenerator extension : this.extensions) {
+                extensionsType.addExtension(extension);
+            }
+            res.setExtensions(extensionsType);
+        }
+
+        return res;
     }
 }

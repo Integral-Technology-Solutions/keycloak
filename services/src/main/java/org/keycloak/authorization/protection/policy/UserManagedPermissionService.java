@@ -30,10 +30,8 @@ import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
-import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
-import javax.ws.rs.core.UriInfo;
 
 import org.jboss.resteasy.annotations.cache.NoCache;
 import org.jboss.resteasy.spi.ResteasyProviderFactory;
@@ -47,6 +45,7 @@ import org.keycloak.authorization.model.Policy;
 import org.keycloak.authorization.model.Resource;
 import org.keycloak.authorization.model.ResourceServer;
 import org.keycloak.authorization.store.ResourceStore;
+import org.keycloak.common.Profile;
 import org.keycloak.representations.idm.authorization.UmaPermissionRepresentation;
 import org.keycloak.services.ErrorResponseException;
 import org.keycloak.services.resources.admin.AdminEventBuilder;
@@ -74,7 +73,7 @@ public class UserManagedPermissionService {
     @Path("{resourceId}")
     @Consumes("application/json")
     @Produces("application/json")
-    public Response create(@Context UriInfo uriInfo, @PathParam("resourceId") String resourceId, UmaPermissionRepresentation representation) {
+    public Response create(@PathParam("resourceId") String resourceId, UmaPermissionRepresentation representation) {
         if (representation.getId() != null) {
             throw new ErrorResponseException(OAuthErrorException.INVALID_REQUEST, "Newly created uma policies should not have an id", Response.Status.BAD_REQUEST);
         }
@@ -91,7 +90,7 @@ public class UserManagedPermissionService {
     @PUT
     @Consumes("application/json")
     @Produces("application/json")
-    public Response update(@Context UriInfo uriInfo, @PathParam("policyId") String policyId, String payload) {
+    public Response update(@PathParam("policyId") String policyId, String payload) {
         UmaPermissionRepresentation representation;
 
         try {
@@ -102,14 +101,14 @@ public class UserManagedPermissionService {
 
         checkRequest(getAssociatedResourceId(policyId), representation);
 
-        return PolicyTypeResourceService.class.cast(delegate.getResource(policyId)).update(uriInfo, payload);
+        return PolicyTypeResourceService.class.cast(delegate.getResource(policyId)).update(payload);
     }
 
     @Path("{policyId}")
     @DELETE
-    public Response delete(@Context UriInfo uriInfo, @PathParam("policyId") String policyId) {
+    public Response delete(@PathParam("policyId") String policyId) {
         checkRequest(getAssociatedResourceId(policyId), null);
-        PolicyTypeResourceService.class.cast(delegate.getResource(policyId)).delete(uriInfo);
+        PolicyTypeResourceService.class.cast(delegate.getResource(policyId)).delete();
         return Response.noContent().build();
     }
 
@@ -118,7 +117,7 @@ public class UserManagedPermissionService {
     @Produces("application/json")
     public Response findById(@PathParam("policyId") String policyId) {
         checkRequest(getAssociatedResourceId(policyId), null);
-        return PolicyTypeResourceService.class.cast(delegate.getResource(policyId)).findById();
+        return PolicyTypeResourceService.class.cast(delegate.getResource(policyId)).findById(null);
     }
 
     @GET
@@ -129,7 +128,7 @@ public class UserManagedPermissionService {
                          @QueryParam("scope") String scope,
                          @QueryParam("first") Integer firstResult,
                          @QueryParam("max") Integer maxResult) {
-        return  delegate.findAll(null, name, "uma", resource, scope, true, identity.getId(), firstResult, maxResult);
+        return  delegate.findAll(null, name, "uma", resource, scope, true, identity.getId(), null, firstResult, maxResult);
     }
 
     private Policy getPolicy(@PathParam("policyId") String policyId) {
@@ -151,7 +150,7 @@ public class UserManagedPermissionService {
         }
 
         if (!resource.getOwner().equals(identity.getId())) {
-            throw new ErrorResponseException(OAuthErrorException.INVALID_REQUEST, "Only resource onwer can access policies for resource [" + resourceId + "]", Status.BAD_REQUEST);
+            throw new ErrorResponseException(OAuthErrorException.INVALID_REQUEST, "Only resource owner can access policies for resource [" + resourceId + "]", Status.BAD_REQUEST);
         }
 
         if (!resource.isOwnerManagedAccess()) {
@@ -173,6 +172,12 @@ public class UserManagedPermissionService {
 
             if (!resourceScopes.containsAll(scopes)) {
                 throw new ErrorResponseException(OAuthErrorException.INVALID_REQUEST, "Some of the scopes [" + scopes + "] are not valid for resource [" + resourceId + "]", Response.Status.BAD_REQUEST);
+            }
+
+            if (representation.getCondition() != null) {
+                if (!Profile.isFeatureEnabled(Profile.Feature.UPLOAD_SCRIPTS)) {
+                    throw new ErrorResponseException(OAuthErrorException.INVALID_REQUEST, "Script upload not supported", Status.BAD_REQUEST);
+                }
             }
         }
     }

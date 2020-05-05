@@ -28,10 +28,8 @@ import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
-import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
-import javax.ws.rs.core.UriInfo;
 
 import org.jboss.resteasy.annotations.cache.NoCache;
 import org.keycloak.authorization.admin.ResourceSetService;
@@ -39,6 +37,7 @@ import org.keycloak.authorization.identity.Identity;
 import org.keycloak.authorization.model.Resource;
 import org.keycloak.authorization.model.ResourceServer;
 import org.keycloak.events.admin.OperationType;
+import org.keycloak.models.KeycloakSession;
 import org.keycloak.representations.idm.authorization.ResourceOwnerRepresentation;
 import org.keycloak.representations.idm.authorization.ResourceRepresentation;
 import org.keycloak.services.ErrorResponseException;
@@ -50,9 +49,11 @@ public class ResourceService {
 
     private final ResourceServer resourceServer;
     private final ResourceSetService resourceManager;
+    private final KeycloakSession session;
     private final Identity identity;
 
-    public ResourceService(ResourceServer resourceServer, Identity identity, ResourceSetService resourceManager) {
+    public ResourceService(KeycloakSession session, ResourceServer resourceServer, Identity identity, ResourceSetService resourceManager) {
+        this.session = session;
         this.identity = identity;
         this.resourceServer = resourceServer;
         this.resourceManager = resourceManager;
@@ -61,7 +62,7 @@ public class ResourceService {
     @POST
     @Consumes("application/json")
     @Produces("application/json")
-    public Response create(@Context  UriInfo uriInfo, UmaResourceRepresentation resource) {
+    public Response create(UmaResourceRepresentation resource) {
         checkResourceServerSettings();
 
         if (resource == null) {
@@ -85,7 +86,7 @@ public class ResourceService {
 
         ResourceRepresentation newResource = resourceManager.create(resource);
 
-        resourceManager.audit(uriInfo, resource, resource.getId(), OperationType.CREATE);
+        resourceManager.audit(resource, resource.getId(), OperationType.CREATE);
 
         return Response.status(Status.CREATED).entity(new UmaResourceRepresentation(newResource)).build();
     }
@@ -94,15 +95,15 @@ public class ResourceService {
     @PUT
     @Consumes("application/json")
     @Produces("application/json")
-    public Response update(@Context UriInfo uriInfo, @PathParam("id") String id, ResourceRepresentation resource) {
-        return this.resourceManager.update(uriInfo, id, resource);
+    public Response update(@PathParam("id") String id, ResourceRepresentation resource) {
+        return this.resourceManager.update(id, resource);
     }
 
     @Path("/{id}")
     @DELETE
-    public Response delete(@Context UriInfo uriInfo, @PathParam("id") String id) {
+    public Response delete(@PathParam("id") String id) {
         checkResourceServerSettings();
-        return this.resourceManager.delete(uriInfo, id);
+        return this.resourceManager.delete(id);
     }
 
     @Path("/{id}")
@@ -122,10 +123,16 @@ public class ResourceService {
                          @QueryParam("type") String type,
                          @QueryParam("scope") String scope,
                          @QueryParam("matchingUri") Boolean matchingUri,
+                         @QueryParam("exactName") Boolean exactName,
                          @QueryParam("deep") Boolean deep,
                          @QueryParam("first") Integer firstResult,
                          @QueryParam("max") Integer maxResult) {
-        return resourceManager.find(id, name, uri, owner, type, scope, matchingUri, deep, firstResult, maxResult, (BiFunction<Resource, Boolean, String>) (resource, deep1) -> resource.getId());
+
+        if(deep != null && deep) {
+            return resourceManager.find(id, name, uri, owner, type, scope, matchingUri, exactName, deep, firstResult, maxResult);
+        } else {
+            return resourceManager.find(id, name, uri, owner, type, scope, matchingUri, exactName, deep, firstResult, maxResult, (BiFunction<Resource, Boolean, String>) (resource, deep1) -> resource.getId());
+        }
     }
 
     private void checkResourceServerSettings() {

@@ -43,7 +43,7 @@ public class ApplianceBootstrap {
     }
 
     public boolean isNewInstall() {
-        if (session.realms().getRealms().size() > 0) {
+        if (session.realms().getRealm(Config.getAdminRealm()) != null) {
             return false;
         } else {
             return true;
@@ -55,7 +55,7 @@ public class ApplianceBootstrap {
         return session.users().getUsersCount(realm) == 0;
     }
 
-    public boolean createMasterRealm(String contextPath) {
+    public boolean createMasterRealm() {
         if (!isNewInstall()) {
             throw new IllegalStateException("Can't create default realm as realms already exists");
         }
@@ -64,7 +64,6 @@ public class ApplianceBootstrap {
         ServicesLogger.LOGGER.initializingAdminRealm(adminRealmName);
 
         RealmManager manager = new RealmManager(session);
-        manager.setContextPath(contextPath);
         RealmModel realm = manager.createRealm(adminRealmName, adminRealmName);
         realm.setName(adminRealmName);
         realm.setDisplayName(Version.NAME);
@@ -76,6 +75,9 @@ public class ApplianceBootstrap {
         realm.setAccessTokenLifespanForImplicitFlow(Constants.DEFAULT_ACCESS_TOKEN_LIFESPAN_FOR_IMPLICIT_FLOW_TIMEOUT);
         realm.setSsoSessionMaxLifespan(36000);
         realm.setOfflineSessionIdleTimeout(Constants.DEFAULT_OFFLINE_SESSION_IDLE_TIMEOUT);
+        // KEYCLOAK-7688 Offline Session Max for Offline Token
+        realm.setOfflineSessionMaxLifespanEnabled(false);
+        realm.setOfflineSessionMaxLifespan(Constants.DEFAULT_OFFLINE_SESSION_MAX_LIFESPAN);
         realm.setAccessCodeLifespan(60);
         realm.setAccessCodeLifespanUserAction(300);
         realm.setAccessCodeLifespanLogin(1800);
@@ -100,9 +102,7 @@ public class ApplianceBootstrap {
         UserModel adminUser = session.users().addUser(realm, username);
         adminUser.setEnabled(true);
 
-        UserCredentialModel usrCredModel = new UserCredentialModel();
-        usrCredModel.setType(UserCredentialModel.PASSWORD);
-        usrCredModel.setValue(password);
+        UserCredentialModel usrCredModel = UserCredentialModel.password(password);
         session.userCredentialManager().updateCredential(realm, adminUser, usrCredModel);
 
         RoleModel adminRole = realm.getRole(AdminRoles.ADMIN);

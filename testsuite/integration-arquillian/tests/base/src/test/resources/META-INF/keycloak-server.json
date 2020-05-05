@@ -1,10 +1,31 @@
 {
+
+    "hostname": {
+        "provider": "${keycloak.hostname.provider:default}",
+
+        "fixed": {
+            "hostname": "${keycloak.hostname.fixed.hostname:localhost}",
+            "httpPort": "${keycloak.hostname.fixed.httpPort:-1}",
+            "httpsPort": "${keycloak.hostname.fixed.httpsPort:-1}",
+            "alwaysHttps": "${keycloak.hostname.fixed.alwaysHttps:false}"
+        },
+
+        "default": {
+            "frontendUrl": "${keycloak.frontendUrl:}",
+            "adminUrl": "${keycloak.adminUrl:}",
+            "forceBackendUrlToFrontendUrl": "${keycloak.hostname.default.forceBackendUrlToFrontendUrl:false}"
+        }
+    },
+
     "admin": {
         "realm": "master"
     },
 
     "eventsStore": {
-        "provider": "${keycloak.eventsStore.provider:jpa}"
+        "provider": "${keycloak.eventsStore.provider:jpa}",
+        "jpa": {
+            "max-detail-length": "${keycloak.eventsStore.maxDetailLength:1000}"
+        }
     },
 
     "eventsListener": {
@@ -79,16 +100,18 @@
     },
 
     "connectionsHttpClient": {
-        "default": {}
+        "default": {
+            "max-connection-idle-time-millis": 1000
+        }
     },
 
 
     "connectionsJpa": {
         "default": {
-            "url": "${keycloak.connectionsJpa.url:jdbc:h2:mem:test;MVCC=TRUE}",
-            "driver": "${keycloak.connectionsJpa.driver:org.h2.Driver}",
+            "url": "${keycloak.connectionsJpa.url:SET-THE-keycloak.connectionsJpa.URL-PROPERTY}",
+            "driver": "${keycloak.connectionsJpa.driver:SET-THE-keycloak.connectionsJpa.driver-PROPERTY}",
             "driverDialect": "${keycloak.connectionsJpa.driverDialect:}",
-            "user": "${keycloak.connectionsJpa.user:sa}",
+            "user": "${keycloak.connectionsJpa.user:}",
             "password": "${keycloak.connectionsJpa.password:}",
             "initializeEmpty": true,
             "migrationStrategy": "update",
@@ -115,8 +138,10 @@
             "sessionsOwners": "${keycloak.connectionsInfinispan.sessionsOwners:1}",
             "l1Lifespan": "${keycloak.connectionsInfinispan.l1Lifespan:600000}",
             "remoteStoreEnabled": "${keycloak.connectionsInfinispan.remoteStoreEnabled:false}",
-            "remoteStoreServer": "${keycloak.connectionsInfinispan.remoteStoreServer:localhost}",
-            "remoteStorePort": "${keycloak.connectionsInfinispan.remoteStorePort:11222}"
+            "remoteStoreHost": "${keycloak.connectionsInfinispan.remoteStoreServer:localhost}",
+            "remoteStorePort": "${keycloak.connectionsInfinispan.remoteStorePort:11222}",
+            "hotrodProtocolVersion": "${keycloak.connectionsInfinispan.hotrodProtocolVersion}",
+            "embedded": "${keycloak.connectionsInfinispan.embedded:true}"
         }
     },
 
@@ -162,6 +187,19 @@
             "sslClientCert": "x-ssl-client-cert",
             "sslCertChainPrefix": "x-ssl-client-cert-chain",
             "certificateChainLength": 1
+        },
+        "nginx": {
+            "enabled": true,
+            "sslClientCert": "x-ssl-client-cert",
+            "sslCertChainPrefix": "x-ssl-client-cert-chain",
+            "certificateChainLength": 1
+        }
+    },
+
+    "vault": {
+        "files-plaintext": {
+            "dir": "target/dependency/vault",
+            "enabled": "${keycloak.vault.files-plaintext.provider.enabled:false}"
         }
     }
 }

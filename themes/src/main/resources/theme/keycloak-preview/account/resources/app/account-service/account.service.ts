@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Red Hat Inc. and/or its affiliates and other contributors
+ * Copyright 2018 Red Hat Inc. and/or its affiliates and other contributors
  * as indicated by the @author tags. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
@@ -14,97 +14,112 @@
  * License for the specific language governing permissions and limitations under
  * the License.
  */
- 
-import {Injectable} from '@angular/core';
-import {Http, Response, RequestOptionsArgs} from '@angular/http';
 
-import {ToastNotifier, ToastNotification} from '../top-nav/toast.notifier';
+//import {KeycloakNotificationService} from '../notification/keycloak-notification.service';
 import {KeycloakService} from '../keycloak-service/keycloak.service';
- 
+import Axios, {AxiosRequestConfig, AxiosResponse, AxiosError} from 'axios';
+import {ContentAlert} from '../content/ContentAlert';
+
+//import {NotificationType} from 'patternfly-ng/notification';*/
+
+type AxiosResolve = (response: AxiosResponse) => void;
+type ConfigResolve = (config: AxiosRequestConfig) => void;
+type ErrorReject = (error: Error) => void;
+
  /**
  *
- * @author Stan Silvert ssilvert@redhat.com (C) 2017 Red Hat Inc.
+ * @author Stan Silvert ssilvert@redhat.com (C) 2018 Red Hat Inc.
  */
-@Injectable()
 export class AccountServiceClient {
+    private static instance: AccountServiceClient = new AccountServiceClient();
 
-    private accountUrl: string;
+    private kcSvc: KeycloakService = KeycloakService.Instance;
+    private accountUrl: string = this.kcSvc.authServerUrl() + 'realms/' + this.kcSvc.realm() + '/account';
 
-    constructor(protected http: Http,
-        protected kcSvc: KeycloakService,
-        protected notifier: ToastNotifier) {
-        this.accountUrl = kcSvc.authServerUrl() + 'realms/' + kcSvc.realm() + '/account';
+    private constructor() {}
+
+    public static get Instance(): AccountServiceClient  {
+        return AccountServiceClient.instance;
     }
-    
-    public doGetRequest(endpoint: string, 
-                        responseHandler: Function, 
-                        options?: RequestOptionsArgs) {
-        this.http.get(this.accountUrl + endpoint, options)
-            .subscribe((res: Response) => responseHandler(res),
-                       (error: Response) => this.handleServiceError(error));
+
+    public doGet(endpoint: string,
+                config?: AxiosRequestConfig): Promise<AxiosResponse> {
+        return this.doRequest(endpoint, {...config, method: 'get'});
     }
-    
-    public doPostRequest(endpoint: string,
-                         responseHandler: Function,
-                         options?: RequestOptionsArgs,
-                         successMessage?: string) {
-        this.http.post(this.accountUrl + endpoint, options)
-            .subscribe((res: Response) => this.handleAccountUpdated(responseHandler, res, successMessage),
-                       (error: Response) => this.handleServiceError(error));
-    }
-    
-    private handleAccountUpdated(responseHandler: Function, res: Response, successMessage?: string) {
-        let message: string = "Your account has been updated.";
-        if (successMessage) message = successMessage;
-        this.notifier.emit(new ToastNotification(message, "success"));
-        responseHandler(res);
-    } 
-    
+
     public doDelete(endpoint: string,
-                    responseHandler: Function,
-                    options?: RequestOptionsArgs,
-                    successMessage?: string) {
-        this.http.delete(this.accountUrl + endpoint, options)
-            .subscribe((res: Response) => this.handleAccountUpdated(responseHandler, res, successMessage),
-                       (error: Response) => this.handleServiceError(error));
+            config?: AxiosRequestConfig): Promise<AxiosResponse> {
+        return this.doRequest(endpoint, {...config, method: 'delete'});
     }
-    
-    private handleServiceError(response: Response): void {
-        console.log('**** ERROR!!!! ***');
-        console.log(JSON.stringify(response));
-        console.log("response.status=" + response.status);
-        console.log('***************************************')
-        
-        if ((response.status === undefined) || (response.status === 401)) {
-            this.kcSvc.logout();
-            return;
+
+    public doPut(endpoint: string,
+                config?: AxiosRequestConfig): Promise<AxiosResponse> {
+        return this.doRequest(endpoint, {...config,
+                                         method: 'put',
+                                         headers: {'Content-Type': 'application/json'}
+                                        }
+        );
+    }
+
+    public doPost(endpoint: string,
+                config?: AxiosRequestConfig): Promise<AxiosResponse> {
+        return this.doRequest(endpoint, {...config, method: 'post'});
+    }
+
+    public doRequest(endpoint: string,
+                     config?: AxiosRequestConfig): Promise<AxiosResponse> {
+
+        return new Promise((resolve: AxiosResolve, reject: ErrorReject) => {
+            this.makeConfig(endpoint, config)
+                .then((config: AxiosRequestConfig) => {
+                    this.axiosRequest(config, resolve, reject);
+                }).catch( (error: AxiosError) => {
+                    this.handleError(error);
+                    reject(error);
+                });
+        });
+    }
+
+    private axiosRequest(config: AxiosRequestConfig,
+                         resolve: AxiosResolve,
+                         reject: ErrorReject): void {
+        Axios.request(config)
+            .then((response: AxiosResponse) => {
+                 resolve(response);
+            })
+            .catch((error: AxiosError) => {
+                this.handleError(error);
+                reject(error);
+            });
+    }
+
+    private handleError(error: AxiosError): void {
+        if (error != null && error.response != null && error.response.status === 401) {
+            // session timed out?
+            this.kcSvc.login();
         }
+        console.log(error);
 
-        if (response.status === 403) {
-            // TODO: go to a forbidden page?
+        if (error != null && error.response != null && error.response.data != null && error.response.data.errorMessage) {
+            ContentAlert.danger(error.response.data.errorMessage);
+        } else {
+            ContentAlert.danger(error.name + ': ' + error.message);
         }
+    }
 
-        if (response.status === 404) {
-            // TODO: route to PageNotFoundComponent
-        }
-
-        let message: string = response.status + " " + response.statusText;
-
-        const not500Error: boolean = response.status !== 500;
-        console.log('not500Error=' + not500Error);
-        
-        // Unfortunately, errors can be sent back in the response body as
-        // 'errorMessage' or 'error_description'
-        if (not500Error && response.json().hasOwnProperty('errorMessage')) {
-            message = response.json().errorMessage;
-        }
-
-        if (not500Error && response.json().hasOwnProperty('error_description')) {
-            message = response.json().error_description;
-        }
-
-        this.notifier.emit(new ToastNotification(message, "error"));
+    private makeConfig(endpoint: string, config: AxiosRequestConfig = {}): Promise<AxiosRequestConfig> {
+        return new Promise( (resolve: ConfigResolve) => {
+            this.kcSvc.getToken()
+                .then( (token: string) => {
+                    resolve( {
+                        ...config,
+                        baseURL: this.accountUrl,
+                        url: endpoint,
+                        headers: {...config.headers, Authorization: 'Bearer ' + token}
+                    });
+                }).catch(() => {
+                    this.kcSvc.login();
+                });
+        });
     }
 }
-
-

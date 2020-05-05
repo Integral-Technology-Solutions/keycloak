@@ -76,7 +76,8 @@ public class StaxParserUtil {
             SchemaFactory factory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
             Schema schema = factory.newSchema(new StreamSource(sch));
             Validator validator = schema.newValidator();
-            validator.validate(new StAXSource(xmlEventReader));
+            StAXSource stAXSource = new StAXSource(xmlEventReader);
+            validator.validate(stAXSource);
         } catch (Exception e) {
             throw logger.parserException(e);
         }
@@ -491,6 +492,24 @@ public class StaxParserUtil {
             throw logger.parserException(e);
         }
         return str;
+    }
+
+    /**
+     * Get the element text, replacing every occurrence of ${..} by corresponding system property value
+     *
+     * @param xmlEventReader
+     *
+     * @return A <b>trimmed</b> string value with all property references replaced if any. 
+     * If there are no valid references the input string will be returned
+     *
+     * @throws ParsingException
+     */
+    public static String getElementTextRP(XMLEventReader xmlEventReader) throws ParsingException {
+        try {
+            return trim(StringPropertyReplacer.replaceProperties(xmlEventReader.getElementText()));
+        } catch (XMLStreamException e) {
+            throw logger.parserException(e);
+        }
     }
 
     /**

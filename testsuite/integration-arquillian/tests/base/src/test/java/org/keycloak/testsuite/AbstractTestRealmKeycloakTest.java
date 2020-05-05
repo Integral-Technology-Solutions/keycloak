@@ -21,6 +21,7 @@ import org.junit.After;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.common.util.reflections.Reflections;
 import org.keycloak.events.Details;
+import org.keycloak.models.KeycloakSession;
 import org.keycloak.representations.IDToken;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.EventRepresentation;
@@ -40,9 +41,10 @@ import static org.keycloak.testsuite.admin.AbstractAdminTest.loadJson;
  * @author Stan Silvert ssilvert@redhat.com (C) 2016 Red Hat Inc.
  */
 public abstract class AbstractTestRealmKeycloakTest extends AbstractKeycloakTest {
-
+    public static final String TEST_REALM_NAME = "test";
+    
     protected RealmResource testRealm() {
-        return adminClient.realm("test");
+        return adminClient.realm(TEST_REALM_NAME);
     }
 
     protected UserRepresentation findUser(String userNameOrEmail) {
@@ -65,6 +67,7 @@ public abstract class AbstractTestRealmKeycloakTest extends AbstractKeycloakTest
 
     @Override
     public void addTestRealms(List<RealmRepresentation> testRealms) {
+        log.debug("Adding test realm for import from testrealm.json");
         RealmRepresentation testRealm = loadJson(getClass().getResourceAsStream("/testrealm.json"), RealmRepresentation.class);
 
         testRealms.add(testRealm);
@@ -107,4 +110,9 @@ public abstract class AbstractTestRealmKeycloakTest extends AbstractKeycloakTest
         return idToken;
     }
 
+    /** KEYCLOAK-12065 Inherit Client Connection from parent session **/
+    public static KeycloakSession inheritClientConnection(KeycloakSession parentSession, KeycloakSession currentSession) {
+        currentSession.getContext().setConnection(parentSession.getContext().getConnection());
+        return currentSession;
+    }
 }

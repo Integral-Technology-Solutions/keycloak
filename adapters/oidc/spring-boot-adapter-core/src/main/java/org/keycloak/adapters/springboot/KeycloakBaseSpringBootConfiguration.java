@@ -18,6 +18,7 @@
 package org.keycloak.adapters.springboot;
 
 import io.undertow.servlet.api.DeploymentInfo;
+import io.undertow.servlet.api.SecurityInfo.EmptyRoleSemantic;
 import io.undertow.servlet.api.WebResourceCollection;
 import org.apache.catalina.Context;
 import org.apache.tomcat.util.descriptor.web.LoginConfig;
@@ -25,30 +26,21 @@ import org.apache.tomcat.util.descriptor.web.SecurityCollection;
 import org.apache.tomcat.util.descriptor.web.SecurityConstraint;
 import org.eclipse.jetty.security.ConstraintMapping;
 import org.eclipse.jetty.security.ConstraintSecurityHandler;
+import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.handler.HandlerCollection;
+import org.eclipse.jetty.server.handler.HandlerList;
+import org.eclipse.jetty.server.handler.HandlerWrapper;
 import org.eclipse.jetty.util.security.Constraint;
 import org.eclipse.jetty.webapp.WebAppContext;
 import org.keycloak.adapters.jetty.KeycloakJettyAuthenticator;
-import org.keycloak.adapters.tomcat.KeycloakAuthenticatorValve;
 import org.keycloak.adapters.undertow.KeycloakServletExtension;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
-import org.springframework.boot.context.embedded.ConfigurableEmbeddedServletContainer;
-import org.springframework.boot.context.embedded.EmbeddedServletContainerCustomizer;
-import org.springframework.boot.context.embedded.jetty.JettyEmbeddedServletContainerFactory;
-import org.springframework.boot.context.embedded.jetty.JettyServerCustomizer;
-import org.springframework.boot.context.embedded.tomcat.TomcatContextCustomizer;
-import org.springframework.boot.context.embedded.tomcat.TomcatEmbeddedServletContainerFactory;
-import org.springframework.boot.context.embedded.undertow.UndertowDeploymentInfoCustomizer;
-import org.springframework.boot.context.embedded.undertow.UndertowEmbeddedServletContainerFactory;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.context.ApplicationContext;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
@@ -56,15 +48,19 @@ import java.util.Set;
  * Keycloak authentication base integration for Spring Boot - base to be extended for particular boot versions.
  */
 public class KeycloakBaseSpringBootConfiguration {
-
+	
     protected KeycloakSpringBootProperties keycloakProperties;
 
     @Autowired
     public void setKeycloakSpringBootProperties(KeycloakSpringBootProperties keycloakProperties) {
         this.keycloakProperties = keycloakProperties;
-        KeycloakSpringBootConfigResolver.setAdapterConfig(keycloakProperties);
+        KeycloakSpringBootConfigResolverWrapper.setAdapterConfig(keycloakProperties);
     }
 
+    @Autowired
+    public void setApplicationContext(ApplicationContext context) {
+        KeycloakSpringBootConfigResolverWrapper.setApplicationContext(context);
+    }
 
     static class KeycloakBaseUndertowDeploymentInfoCustomizer  {
 
@@ -81,9 +77,32 @@ public class KeycloakBaseSpringBootConfiguration {
 
             deploymentInfo.setLoginConfig(loginConfig);
 
-            deploymentInfo.addInitParameter("keycloak.config.resolver", KeycloakSpringBootConfigResolver.class.getName());
-            deploymentInfo.addSecurityConstraints(getSecurityConstraints());
-
+            deploymentInfo.addInitParameter("keycloak.config.resolver", KeycloakSpringBootConfigResolverWrapper.class.getName());
+            
+            
+            /* Support for '*' as all roles allowed
+             * We clear out the role in the SecurityConstraints
+             * and set the EmptyRoleSemantic to Authenticate
+             * But we will set EmptyRoleSemantic to DENY (default)
+             * if roles are non existing or left empty
+             */
+            Iterator<io.undertow.servlet.api.SecurityConstraint> it = this.getSecurityConstraints().iterator();
+            while (it.hasNext()) {
+            	io.undertow.servlet.api.SecurityConstraint securityConstraint = it.next();
+            	Set<String> rolesAllowed = securityConstraint.getRolesAllowed();
+            	
+            	if (rolesAllowed.contains("*") || rolesAllowed.contains("**") ) {
+            		io.undertow.servlet.api.SecurityConstraint allRolesAllowed = new io.undertow.servlet.api.SecurityConstraint();
+            		allRolesAllowed.setEmptyRoleSemantic(EmptyRoleSemantic.AUTHENTICATE);
+            		allRolesAllowed.setTransportGuaranteeType(securityConstraint.getTransportGuaranteeType());
+            		for (WebResourceCollection wr : securityConstraint.getWebResourceCollections()) {
+            			allRolesAllowed.addWebResourceCollection(wr);
+            		}
+            		deploymentInfo.addSecurityConstraint(allRolesAllowed);
+            	} else // left empty will fall back on default EmptyRoleSemantic.DENY
+            		deploymentInfo.addSecurityConstraint(securityConstraint);
+            	
+            }
             deploymentInfo.addServletExtension(new KeycloakServletExtension());
         }
 
@@ -123,7 +142,7 @@ public class KeycloakBaseSpringBootConfiguration {
         public void customize(Server server) {
 
             KeycloakJettyAuthenticator keycloakJettyAuthenticator = new KeycloakJettyAuthenticator();
-            keycloakJettyAuthenticator.setConfigResolver(new KeycloakSpringBootConfigResolver());
+            keycloakJettyAuthenticator.setConfigResolver(new KeycloakSpringBootConfigResolverWrapper());
 
             /* see org.eclipse.jetty.webapp.StandardDescriptorProcessor#visitSecurityConstraint for an example
                on how to map servlet spec to Constraints */
@@ -187,7 +206,7 @@ public class KeycloakBaseSpringBootConfiguration {
             WebAppContext webAppContext = server.getBean(WebAppContext.class);
             //if not found as registered bean let's try the handler
             if(webAppContext==null){
-                webAppContext = (WebAppContext) server.getHandler();
+                webAppContext = getWebAppContext(server.getHandlers());
             }
 
             ConstraintSecurityHandler securityHandler = new ConstraintSecurityHandler();
@@ -195,6 +214,21 @@ public class KeycloakBaseSpringBootConfiguration {
             securityHandler.setAuthenticator(keycloakJettyAuthenticator);
 
             webAppContext.setSecurityHandler(securityHandler);
+        }
+
+        private WebAppContext getWebAppContext(Handler... handlers) {
+            for (Handler handler : handlers) {
+                if (handler instanceof WebAppContext) {
+                    return (WebAppContext) handler;
+                } else if (handler instanceof HandlerList) {
+                    return getWebAppContext(((HandlerList) handler).getHandlers());
+                } else if (handler instanceof HandlerCollection) {
+                    return getWebAppContext(((HandlerCollection) handler).getHandlers());
+                } else if (handler instanceof HandlerWrapper) {
+                    return getWebAppContext(((HandlerWrapper) handler).getHandlers());
+                }
+            }
+            throw new RuntimeException("No WebAppContext found in Jetty server handlers");
         }
     }
 
@@ -223,9 +257,12 @@ public class KeycloakBaseSpringBootConfiguration {
 
             for (KeycloakSpringBootProperties.SecurityConstraint constraint : keycloakProperties.getSecurityConstraints()) {
                 SecurityConstraint tomcatConstraint = new SecurityConstraint();
-
                 for (String authRole : constraint.getAuthRoles()) {
                     tomcatConstraint.addAuthRole(authRole);
+                    if(authRole.equals("*") || authRole.equals("**")) {
+                        // For some reasons embed tomcat don't set the auth constraint on true when wildcard is used
+                        tomcatConstraint.setAuthConstraint(true);
+                    }
                 }
 
                 for (KeycloakSpringBootProperties.SecurityCollection collection : constraint.getSecurityCollections()) {
@@ -256,7 +293,7 @@ public class KeycloakBaseSpringBootConfiguration {
                 context.addConstraint(tomcatConstraint);
             }
 
-            context.addParameter("keycloak.config.resolver", KeycloakSpringBootConfigResolver.class.getName());
+            context.addParameter("keycloak.config.resolver", KeycloakSpringBootConfigResolverWrapper.class.getName());
         }
     }
 }

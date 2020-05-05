@@ -20,8 +20,8 @@ package org.keycloak.services.resources.admin;
 import org.jboss.resteasy.annotations.cache.NoCache;
 import org.jboss.resteasy.plugins.providers.multipart.InputPart;
 import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataInput;
-import org.jboss.resteasy.spi.NotAcceptableException;
-import org.jboss.resteasy.spi.NotFoundException;
+import javax.ws.rs.NotAcceptableException;
+import javax.ws.rs.NotFoundException;
 import org.keycloak.common.util.PemUtils;
 import org.keycloak.common.util.StreamUtil;
 import org.keycloak.events.admin.OperationType;
@@ -129,7 +129,6 @@ public class ClientAttributeCertificateResource {
     /**
      * Upload certificate and eventually private key
      *
-     * @param uriInfo
      * @param input
      * @return
      * @throws IOException
@@ -138,7 +137,7 @@ public class ClientAttributeCertificateResource {
     @Path("upload")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Produces(MediaType.APPLICATION_JSON)
-    public CertificateRepresentation uploadJks(@Context final UriInfo uriInfo, MultipartFormDataInput input) throws IOException {
+    public CertificateRepresentation uploadJks(MultipartFormDataInput input) throws IOException {
         auth.clients().requireConfigure(client);
 
         try {
@@ -155,7 +154,6 @@ public class ClientAttributeCertificateResource {
     /**
      * Upload only certificate, not private key
      *
-     * @param uriInfo
      * @param input
      * @return information extracted from uploaded certificate - not necessarily the new state of certificate on the server
      * @throws IOException
@@ -164,7 +162,7 @@ public class ClientAttributeCertificateResource {
     @Path("upload-certificate")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     @Produces(MediaType.APPLICATION_JSON)
-    public CertificateRepresentation uploadJksCertificate(@Context final UriInfo uriInfo, MultipartFormDataInput input) throws IOException {
+    public CertificateRepresentation uploadJksCertificate(MultipartFormDataInput input) throws IOException {
         auth.clients().requireConfigure(client);
 
         try {

@@ -16,7 +16,6 @@
  */
 package org.keycloak.testsuite.admin.client.authorization;
 
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.keycloak.adapters.KeycloakDeployment;
 import org.keycloak.adapters.KeycloakDeploymentBuilder;
@@ -25,23 +24,21 @@ import org.keycloak.representations.adapters.config.PolicyEnforcerConfig;
 import org.keycloak.representations.adapters.config.PolicyEnforcerConfig.PathConfig;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.testsuite.AbstractKeycloakTest;
-import org.keycloak.testsuite.ProfileAssume;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.keycloak.testsuite.util.IOUtil.loadRealm;
+import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude;
+import org.keycloak.testsuite.arquillian.annotation.AuthServerContainerExclude.AuthServer;
+import static org.keycloak.testsuite.utils.io.IOUtil.loadRealm;
 
 /**
  * @author <a href="mailto:psilva@redhat.com">Pedro Igor</a>
  */
+@AuthServerContainerExclude(AuthServer.REMOTE)
 public class EnforcerConfigTest extends AbstractKeycloakTest {
-
-    @BeforeClass
-    public static void enabled() { ProfileAssume.assumePreview(); }
 
     @Override
     public void addTestRealms(List<RealmRepresentation> testRealms) {

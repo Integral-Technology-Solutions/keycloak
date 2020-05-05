@@ -21,18 +21,19 @@ import java.util.Set;
 
 import org.infinispan.Cache;
 import org.infinispan.client.hotrod.RemoteCache;
-import org.infinispan.configuration.cache.CacheMode;
-import org.infinispan.distribution.DistributionManager;
 import org.infinispan.persistence.manager.PersistenceManager;
 import org.infinispan.persistence.remote.RemoteStore;
 import org.infinispan.remoting.transport.Transport;
 import org.keycloak.connections.infinispan.InfinispanConnectionProvider;
+import org.keycloak.connections.infinispan.TopologyInfo;
 import org.keycloak.models.KeycloakSession;
 
 /**
  * @author <a href="mailto:mposolda@redhat.com">Marek Posolda</a>
  */
 public class InfinispanUtil {
+
+    public static final int MAXIMUM_REPLACE_RETRIES = 25;
 
     // See if we have RemoteStore (external JDG) configured for cross-Data-Center scenario
     public static Set<RemoteStore> getRemoteStores(Cache ispnCache) {
@@ -50,34 +51,8 @@ public class InfinispanUtil {
     }
 
 
-    public static boolean isDistributedCache(Cache ispnCache) {
-        CacheMode cacheMode = ispnCache.getCacheConfiguration().clustering().cacheMode();
-        return cacheMode.isDistributed();
-    }
-
-
-    public static String getMyAddress(KeycloakSession session) {
-        return session.getProvider(InfinispanConnectionProvider.class).getNodeName();
-    }
-
-    public static String getMySite(KeycloakSession session) {
-        return session.getProvider(InfinispanConnectionProvider.class).getSiteName();
-    }
-
-
-    /**
-     *
-     * @param ispnCache
-     * @param key
-     * @return address of the node, who is owner of the specified key in current cluster
-     */
-    public static String getKeyPrimaryOwnerAddress(Cache ispnCache, Object key) {
-        DistributionManager distManager = ispnCache.getAdvancedCache().getDistributionManager();
-        if (distManager == null) {
-            throw new IllegalArgumentException("Cache '" + ispnCache.getName() + "' is not distributed cache");
-        }
-
-        return distManager.getPrimaryLocation(key).toString();
+    public static TopologyInfo getTopologyInfo(KeycloakSession session) {
+        return session.getProvider(InfinispanConnectionProvider.class).getTopologyInfo();
     }
 
 

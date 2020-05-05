@@ -31,16 +31,17 @@ import java.util.Set;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 
+import org.jboss.logging.Logger;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.authentication.AuthenticationFlowError;
 import org.keycloak.authentication.ClientAuthenticationFlowContext;
 import org.keycloak.common.util.Time;
 import org.keycloak.jose.jws.JWSInput;
-import org.keycloak.jose.jws.crypto.RSAProvider;
 import org.keycloak.keys.loader.PublicKeyStorageManager;
 import org.keycloak.models.AuthenticationExecutionModel;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.RealmModel;
+import org.keycloak.models.SingleUseTokenStoreProvider;
 import org.keycloak.protocol.oidc.OIDCLoginProtocol;
 import org.keycloak.protocol.oidc.OIDCLoginProtocolService;
 import org.keycloak.provider.ProviderConfigProperty;
@@ -59,14 +60,12 @@ import org.keycloak.services.Urls;
  */
 public class JWTClientAuthenticator extends AbstractClientAuthenticator {
 
+    private static final Logger logger = Logger.getLogger(JWTClientAuthenticator.class);
+
     public static final String PROVIDER_ID = "client-jwt";
     public static final String ATTR_PREFIX = "jwt.credential";
     public static final String CERTIFICATE_ATTR = "jwt.credential.certificate";
 
-    public static final AuthenticationExecutionModel.Requirement[] REQUIREMENT_CHOICES = {
-            AuthenticationExecutionModel.Requirement.ALTERNATIVE,
-            AuthenticationExecutionModel.Requirement.DISABLED
-    };
 
     @Override
     public void authenticateClient(ClientAuthenticationFlowContext context) {
@@ -127,7 +126,8 @@ public class JWTClientAuthenticator extends AbstractClientAuthenticator {
 
             boolean signatureValid;
             try {
-                signatureValid = RSAProvider.verify(jws, clientPublicKey);
+                JsonWebToken jwt = context.getSession().tokens().decodeClientJWT(clientAssertion, client, JsonWebToken.class);
+                signatureValid = jwt != null;
             } catch (RuntimeException e) {
                 Throwable cause = e.getCause() != null ? e.getCause() : e;
                 throw new RuntimeException("Signature on JWT token failed validation", cause);
@@ -148,8 +148,23 @@ public class JWTClientAuthenticator extends AbstractClientAuthenticator {
             }
 
             // KEYCLOAK-2986
-            if (token.getExpiration() == 0 && token.getIssuedAt() + 10 < Time.currentTime()) {
+            int currentTime = Time.currentTime();
+            if (token.getExpiration() == 0 && token.getIssuedAt() + 10 < currentTime) {
                 throw new RuntimeException("Token is not active");
+            }
+
+            if (token.getId() == null) {
+                throw new RuntimeException("Missing ID on the token");
+            }
+
+            SingleUseTokenStoreProvider singleUseCache = context.getSession().getProvider(SingleUseTokenStoreProvider.class);
+            int lifespanInSecs = Math.max(token.getExpiration() - currentTime, 10);
+            if (singleUseCache.putIfAbsent(token.getId(), lifespanInSecs)) {
+                logger.tracef("Added token '%s' to single-use cache. Lifespan: %d seconds, client: %s", token.getId(), lifespanInSecs, clientId);
+
+            } else {
+                logger.warnf("Token '%s' already used when authenticating client '%s'.", token.getId(), clientId);
+                throw new RuntimeException("Token reuse detected");
             }
 
             context.success();

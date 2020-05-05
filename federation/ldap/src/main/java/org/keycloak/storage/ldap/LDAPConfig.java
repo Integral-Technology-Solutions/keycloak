@@ -22,6 +22,7 @@ import org.keycloak.models.LDAPConstants;
 import org.keycloak.storage.UserStorageProvider;
 
 import javax.naming.directory.SearchControls;
+
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -110,8 +111,17 @@ public class LDAPConfig {
         return Boolean.parseBoolean(validatePPolicy);
     }
 
+    public boolean isTrustEmail(){
+        String trustEmail = config.getFirst(LDAPConstants.TRUST_EMAIL);
+        return Boolean.parseBoolean(trustEmail);
+    }
+
     public String getConnectionPooling() {
-        return config.getFirst(LDAPConstants.CONNECTION_POOLING);
+        if(isStartTls()) {
+            return null;
+        } else {
+            return config.getFirst(LDAPConstants.CONNECTION_POOLING);
+        }
     }
 
     public String getConnectionPoolingAuthentication() {
@@ -175,6 +185,10 @@ public class LDAPConfig {
         return getUuidLDAPAttributeName().equalsIgnoreCase(LDAPConstants.OBJECT_GUID);
     }
 
+    public boolean isEdirectoryGUID() {
+        return isEdirectory() && getUuidLDAPAttributeName().equalsIgnoreCase(LDAPConstants.NOVELL_EDIRECTORY_GUID);
+    }
+
     public boolean isPagination() {
         String pagination = config.getFirst(LDAPConstants.PAGINATION);
         return Boolean.parseBoolean(pagination);
@@ -219,6 +233,10 @@ public class LDAPConfig {
         return null;
     }
 
+    public boolean isStartTls() {
+        return Boolean.parseBoolean(config.getFirst(LDAPConstants.START_TLS));
+    }
+
     public UserStorageProvider.EditMode getEditMode() {
         String editModeString = config.getFirst(LDAPConstants.EDIT_MODE);
         if (editModeString == null) {
@@ -249,6 +267,10 @@ public class LDAPConfig {
         return true;
     }
 
+    public boolean isEdirectory() {
+        return LDAPConstants.VENDOR_NOVELL_EDIRECTORY.equalsIgnoreCase(getVendor());
+    }
+
     @Override
     public int hashCode() {
         return config.hashCode() * 13 + binaryAttributeNames.hashCode();
@@ -262,4 +284,5 @@ public class LDAPConfig {
                 .append(", binaryAttributes: ").append(binaryAttributeNames)
                 .toString();
     }
+
 }

@@ -20,6 +20,8 @@ package org.keycloak.models;
 import java.util.Map;
 import java.util.Set;
 
+import org.keycloak.common.util.ObjectUtil;
+
 /**
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
  * @version $Revision: 1 $
@@ -59,6 +61,10 @@ public interface ClientModel extends ClientScopeModel, RoleContainerModel,  Prot
     boolean isEnabled();
 
     void setEnabled(boolean enabled);
+
+    boolean isAlwaysDisplayInConsole();
+
+    void setAlwaysDisplayInConsole(boolean alwaysDisplayInConsole);
 
     boolean isSurrogateAuthRequired();
 
@@ -125,10 +131,10 @@ public interface ClientModel extends ClientScopeModel, RoleContainerModel,  Prot
      *
      * @return
      */
-    public String getAuthenticationFlowBindingOverride(String binding);
-    public Map<String, String> getAuthenticationFlowBindingOverrides();
-    public void removeAuthenticationFlowBindingOverride(String binding);
-    public void setAuthenticationFlowBindingOverride(String binding, String flowId);
+    String getAuthenticationFlowBindingOverride(String binding);
+    Map<String, String> getAuthenticationFlowBindingOverrides();
+    void removeAuthenticationFlowBindingOverride(String binding);
+    void setAuthenticationFlowBindingOverride(String binding, String flowId);
 
     boolean isFrontchannelLogout();
     void setFrontchannelLogout(boolean flag);
@@ -175,6 +181,17 @@ public interface ClientModel extends ClientScopeModel, RoleContainerModel,  Prot
      */
     Map<String, ClientScopeModel> getClientScopes(boolean defaultScope, boolean filterByProtocol);
 
+    /**
+     * <p>Returns a {@link ClientScopeModel} associated with this client.
+     *
+     * <p>This method is used as a fallback in order to let clients to resolve a {@code scope} dynamically which is not listed as default or optional scope when calling {@link #getClientScopes(boolean, boolean)}.
+     *
+     * @param scope the scope name
+     * @return the client scope
+     */
+    default ClientScopeModel getDynamicClientScope(String scope) {
+        return null;
+    }
 
     /**
      * Time in seconds since epoc
@@ -209,7 +226,7 @@ public interface ClientModel extends ClientScopeModel, RoleContainerModel,  Prot
     @Override
     default String getConsentScreenText() {
         String consentScreenText = ClientScopeModel.super.getConsentScreenText();
-        if (consentScreenText == null) {
+        if (ObjectUtil.isBlank(consentScreenText)) {
             consentScreenText = getClientId();
         }
         return consentScreenText;

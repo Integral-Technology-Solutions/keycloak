@@ -19,6 +19,7 @@ package org.keycloak.testsuite.util;
 
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.GroupRepresentation;
+import org.keycloak.representations.idm.IdentityProviderRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.RolesRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
@@ -81,6 +82,14 @@ public class RealmBuilder {
         return this;
     }
 
+    public RealmBuilder attribute(String key, String value) {
+        if (rep.getAttributes() == null) {
+            rep.setAttributes(new HashMap<>());
+        }
+        rep.getAttributes().put(key, value);
+        return this;
+    }
+
     public RealmBuilder testMail() {
         Map<String, String> config = new HashMap<>();
         config.put("from", MailServerConfiguration.FROM);
@@ -116,9 +125,21 @@ public class RealmBuilder {
 
     public RealmBuilder client(ClientRepresentation client) {
         if (rep.getClients() == null) {
-            rep.setClients(new LinkedList<ClientRepresentation>());
+            rep.setClients(new LinkedList<>());
         }
         rep.getClients().add(client);
+        return this;
+    }
+
+    public RealmBuilder identityProvider(IdentityProviderBuilder identityProvider) {
+        return identityProvider(identityProvider.build());
+    }
+
+    public RealmBuilder identityProvider(IdentityProviderRepresentation identityProvider) {
+        if (rep.getIdentityProviders()== null) {
+            rep.setIdentityProviders(new LinkedList<>());
+        }
+        rep.getIdentityProviders().add(identityProvider);
         return this;
     }
 
@@ -128,7 +149,7 @@ public class RealmBuilder {
 
     public RealmBuilder user(UserRepresentation user) {
         if (rep.getUsers() == null) {
-            rep.setUsers(new LinkedList<UserRepresentation>());
+            rep.setUsers(new LinkedList<>());
         }
         rep.getUsers().add(user);
         return this;
@@ -198,6 +219,16 @@ public class RealmBuilder {
         return this;
     }
 
+    public RealmBuilder ssoSessionIdleTimeoutRememberMe(int ssoSessionIdleTimeoutRememberMe){
+        rep.setSsoSessionIdleTimeoutRememberMe(ssoSessionIdleTimeoutRememberMe);
+        return this;
+    }
+
+    public RealmBuilder ssoSessionMaxLifespanRememberMe(int ssoSessionMaxLifespanRememberMe){
+        rep.setSsoSessionMaxLifespanRememberMe(ssoSessionMaxLifespanRememberMe);
+        return this;
+    }
+
     public RealmBuilder accessCodeLifespanUserAction(int accessCodeLifespanUserAction) {
         rep.setAccessCodeLifespanUserAction(accessCodeLifespanUserAction);
         return this;
@@ -223,6 +254,32 @@ public class RealmBuilder {
             rep.setGroups(new ArrayList<>());
         }
         rep.getGroups().add(group);
+        return this;
+    }
+
+    // KEYCLOAK-7688 Offline Session Max for Offline Token
+    public RealmBuilder offlineSessionIdleTimeout(int offlineSessionIdleTimeout) {
+        rep.setOfflineSessionIdleTimeout(offlineSessionIdleTimeout);
+        return this;
+    }
+
+    public RealmBuilder offlineSessionMaxLifespan(int offlineSessionMaxLifespan) {
+        rep.setOfflineSessionMaxLifespan(offlineSessionMaxLifespan);
+        return this;
+    }
+
+    public RealmBuilder offlineSessionMaxLifespanEnabled(boolean offlineSessionMaxLifespanEnabled) {
+        rep.setOfflineSessionMaxLifespanEnabled(offlineSessionMaxLifespanEnabled);
+        return this;
+    }
+
+    public RealmBuilder clientSessionIdleTimeout(int clientSessionIdleTimeout) {
+        rep.setClientSessionIdleTimeout(clientSessionIdleTimeout);
+        return this;
+    }
+
+    public RealmBuilder clientSessionMaxLifespan(int clientSessionMaxLifespan) {
+        rep.setClientSessionMaxLifespan(clientSessionMaxLifespan);
         return this;
     }
 }

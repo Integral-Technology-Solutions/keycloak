@@ -17,11 +17,10 @@
 package org.keycloak.services.resources;
 
 import org.jboss.logging.Logger;
-import org.keycloak.Config;
 import org.keycloak.common.ClientConnection;
+import org.keycloak.common.Version;
 import org.keycloak.common.util.Base64Url;
 import org.keycloak.common.util.MimeTypeUtil;
-import org.keycloak.models.BrowserSecurityHeaders;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.services.ForbiddenException;
@@ -29,10 +28,9 @@ import org.keycloak.services.ServicesLogger;
 import org.keycloak.services.managers.ApplianceBootstrap;
 import org.keycloak.services.util.CacheControlUtil;
 import org.keycloak.services.util.CookieHelper;
-import org.keycloak.theme.BrowserSecurityHeaderSetup;
 import org.keycloak.theme.FreeMarkerUtil;
 import org.keycloak.theme.Theme;
-import org.keycloak.theme.ThemeProvider;
+import org.keycloak.urls.UrlType;
 import org.keycloak.utils.MediaType;
 
 import javax.ws.rs.Consumes;
@@ -49,7 +47,6 @@ import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.ResponseBuilder;
 import javax.ws.rs.core.Response.Status;
-import javax.ws.rs.core.UriInfo;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
@@ -69,19 +66,13 @@ public class WelcomeResource {
 
     private static final String KEYCLOAK_STATE_CHECKER = "WELCOME_STATE_CHECKER";
 
-    private boolean bootstrap;
-
     @Context
     protected HttpHeaders headers;
 
     @Context
-    private UriInfo uriInfo;
-
-    @Context
     private KeycloakSession session;
 
-    public WelcomeResource(boolean bootstrap) {
-        this.bootstrap = bootstrap;
+    public WelcomeResource() {
     }
 
     /**
@@ -95,7 +86,7 @@ public class WelcomeResource {
     public Response getWelcomePage() throws URISyntaxException {
         checkBootstrap();
 
-        String requestUri = uriInfo.getRequestUri().toString();
+        String requestUri = session.getContext().getUri().getRequestUri().toString();
         if (!requestUri.endsWith("/")) {
             return Response.seeOther(new URI(requestUri + "/")).build();
         } else {
@@ -109,7 +100,7 @@ public class WelcomeResource {
     public Response createUser(final MultivaluedMap<String, String> formData) {
         checkBootstrap();
 
-        if (!bootstrap) {
+        if (!shouldBootstrap()) {
             return createWelcomePage(null, null);
         } else {
             if (!isLocal()) {
@@ -122,6 +113,10 @@ public class WelcomeResource {
             String username = formData.getFirst("username");
             String password = formData.getFirst("password");
             String passwordConfirmation = formData.getFirst("passwordConfirmation");
+
+            if (username != null) {
+                username = username.trim();
+            }
 
             if (username == null || username.length() == 0) {
                 return createWelcomePage(null, "Username is missing");
@@ -139,7 +134,7 @@ public class WelcomeResource {
 
             ApplianceBootstrap applianceBootstrap = new ApplianceBootstrap(session);
             if (applianceBootstrap.isNoMasterUser()) {
-                bootstrap = false;
+                setBootstrap(false);
                 applianceBootstrap.createMasterRealmUser(username, password);
 
                 ServicesLogger.LOGGER.createdInitialAdminUser(username);
@@ -177,7 +172,19 @@ public class WelcomeResource {
 
     private Response createWelcomePage(String successMessage, String errorMessage) {
         try {
+            Theme theme = getTheme();
+
             Map<String, Object> map = new HashMap<>();
+
+            map.put("productName", Version.NAME);
+            map.put("productNameFull", Version.NAME_FULL);
+
+            map.put("properties", theme.getProperties());
+            map.put("adminUrl", session.getContext().getUri(UrlType.ADMIN).getBaseUriBuilder().path("/admin/").build());
+
+            map.put("resourcesPath", "resources/" + Version.RESOURCES_VERSION + "/" + theme.getType().toString().toLowerCase() +"/" + theme.getName());
+
+            boolean bootstrap = shouldBootstrap();
             map.put("bootstrap", bootstrap);
             if (bootstrap) {
                 boolean isLocal = isLocal();
@@ -195,12 +202,11 @@ public class WelcomeResource {
                 map.put("errorMessage", errorMessage);
             }
             FreeMarkerUtil freeMarkerUtil = new FreeMarkerUtil();
-            String result = freeMarkerUtil.processTemplate(map, "index.ftl", getTheme());
+            String result = freeMarkerUtil.processTemplate(map, "index.ftl", theme);
 
             ResponseBuilder rb = Response.status(errorMessage == null ? Status.OK : Status.BAD_REQUEST)
                     .entity(result)
                     .cacheControl(CacheControlUtil.noCache());
-            BrowserSecurityHeaderSetup.headers(rb, BrowserSecurityHeaders.defaultHeaders);
             return rb.build();
         } catch (Exception e) {
             throw new WebApplicationException(Response.Status.INTERNAL_SERVER_ERROR);
@@ -216,9 +222,16 @@ public class WelcomeResource {
     }
 
     private void checkBootstrap() {
-        if (bootstrap) {
-            bootstrap  = new ApplianceBootstrap(session).isNoMasterUser();
-        }
+        if (shouldBootstrap())
+            KeycloakApplication.BOOTSTRAP_ADMIN_USER.compareAndSet(true, new ApplianceBootstrap(session).isNoMasterUser());
+    }
+
+    private boolean shouldBootstrap() {
+        return KeycloakApplication.BOOTSTRAP_ADMIN_USER.get();
+    }
+
+    private void setBootstrap(boolean value) {
+        KeycloakApplication.BOOTSTRAP_ADMIN_USER.set(value);
     }
 
     private boolean isLocal() {
@@ -243,15 +256,15 @@ public class WelcomeResource {
 
     private String setCsrfCookie() {
         String stateChecker = Base64Url.encode(KeycloakModelUtils.generateSecret());
-        String cookiePath = uriInfo.getPath();
-        boolean secureOnly = uriInfo.getRequestUri().getScheme().equalsIgnoreCase("https");
+        String cookiePath = session.getContext().getUri().getPath();
+        boolean secureOnly = session.getContext().getUri().getRequestUri().getScheme().equalsIgnoreCase("https");
         CookieHelper.addCookie(KEYCLOAK_STATE_CHECKER, stateChecker, cookiePath, null, null, 300, secureOnly, true);
         return stateChecker;
     }
 
     private void expireCsrfCookie() {
-        String cookiePath = uriInfo.getPath();
-        boolean secureOnly = uriInfo.getRequestUri().getScheme().equalsIgnoreCase("https");
+        String cookiePath = session.getContext().getUri().getPath();
+        boolean secureOnly = session.getContext().getUri().getRequestUri().getScheme().equalsIgnoreCase("https");
         CookieHelper.addCookie(KEYCLOAK_STATE_CHECKER, "", cookiePath, null, null, 0, secureOnly, true);
     }
 

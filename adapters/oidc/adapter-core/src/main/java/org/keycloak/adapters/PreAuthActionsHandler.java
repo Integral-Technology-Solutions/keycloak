@@ -20,29 +20,25 @@ package org.keycloak.adapters;
 import java.security.PublicKey;
 
 import org.jboss.logging.Logger;
+import org.keycloak.TokenVerifier;
 import org.keycloak.adapters.authentication.ClientCredentialsProvider;
 import org.keycloak.adapters.authentication.JWTClientCredentialsProvider;
-import org.keycloak.adapters.rotation.AdapterRSATokenVerifier;
+import org.keycloak.adapters.rotation.AdapterTokenVerifier;
 import org.keycloak.adapters.spi.HttpFacade;
 import org.keycloak.adapters.spi.UserSessionManagement;
+import org.keycloak.common.VerificationException;
 import org.keycloak.common.util.StreamUtil;
 import org.keycloak.jose.jwk.JSONWebKeySet;
 import org.keycloak.jose.jwk.JWK;
 import org.keycloak.jose.jwk.JWKBuilder;
-import org.keycloak.jose.jws.JWSInputException;
-import org.keycloak.representations.VersionRepresentation;
+import org.keycloak.representations.JsonWebToken;
 import org.keycloak.constants.AdapterConstants;
 import org.keycloak.jose.jws.JWSInput;
-import org.keycloak.jose.jws.JWSInputException;
-import org.keycloak.jose.jws.crypto.RSAProvider;
-import org.keycloak.representations.VersionRepresentation;
 import org.keycloak.representations.adapters.action.AdminAction;
 import org.keycloak.representations.adapters.action.LogoutAction;
 import org.keycloak.representations.adapters.action.PushNotBeforeAction;
 import org.keycloak.representations.adapters.action.TestAvailabilityAction;
 import org.keycloak.util.JsonSerialization;
-
-import java.security.PublicKey;
 
 /**
  * @author <a href="mailto:bill@burkecentral.com">Bill Burke</a>
@@ -86,9 +82,6 @@ public class PreAuthActionsHandler {
         } else if (requestUri.endsWith(AdapterConstants.K_PUSH_NOT_BEFORE)) {
             if (!resolveDeployment()) return true;
             handlePushNotBefore();
-            return true;
-        } else if (requestUri.endsWith(AdapterConstants.K_VERSION)) {
-            handleVersion();
             return true;
         } else if (requestUri.endsWith(AdapterConstants.K_TEST_AVAILABLE)) {
             if (!resolveDeployment()) return true;
@@ -213,17 +206,19 @@ public class PreAuthActionsHandler {
         }
 
         try {
-            JWSInput input = new JWSInput(token);
-            PublicKey publicKey = AdapterRSATokenVerifier.getPublicKey(input.getHeader().getKeyId(), deployment);
-            if (RSAProvider.verify(input, publicKey)) {
-                return input;
+            // Check just signature. Other things checked in validateAction
+            TokenVerifier tokenVerifier = AdapterTokenVerifier.createVerifier(token, deployment, false, JsonWebToken.class);
+            tokenVerifier.verify();
+            return new JWSInput(token);
+        } catch (VerificationException ignore) {
+            log.warn("admin request failed, unable to verify token: "  + ignore.getMessage());
+            if (log.isDebugEnabled()) {
+                log.debug(ignore.getMessage(), ignore);
             }
-        } catch (JWSInputException ignore) {
-        }
 
-        log.warn("admin request failed, unable to verify token");
-        facade.getResponse().sendError(403, "no token");
-        return null;
+            facade.getResponse().sendError(403, "token failed verification");
+            return null;
+        }
     }
 
 
@@ -245,16 +240,6 @@ public class PreAuthActionsHandler {
 
         }
         return true;
-    }
-
-    protected void handleVersion()  {
-        try {
-            facade.getResponse().setStatus(200);
-            facade.getResponse().setHeader("Content-Type", "application/json");
-            JsonSerialization.writeValueToStream(facade.getResponse().getOutputStream(), VersionRepresentation.SINGLETON);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
     }
 
     protected void handleJwksRequest() {

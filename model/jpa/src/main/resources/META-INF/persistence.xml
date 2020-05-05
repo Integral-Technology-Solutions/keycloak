@@ -21,8 +21,8 @@
     version="1.0">
     <persistence-unit name="keycloak-default" transaction-type="RESOURCE_LOCAL">
         <class>org.keycloak.models.jpa.entities.ClientEntity</class>
+        <class>org.keycloak.models.jpa.entities.ClientAttributeEntity</class>
         <class>org.keycloak.models.jpa.entities.CredentialEntity</class>
-        <class>org.keycloak.models.jpa.entities.CredentialAttributeEntity</class>
         <class>org.keycloak.models.jpa.entities.RealmEntity</class>
         <class>org.keycloak.models.jpa.entities.RealmAttributeEntity</class>
         <class>org.keycloak.models.jpa.entities.RequiredCredentialEntity</class>
@@ -31,6 +31,7 @@
         <class>org.keycloak.models.jpa.entities.UserFederationProviderEntity</class>
         <class>org.keycloak.models.jpa.entities.UserFederationMapperEntity</class>
         <class>org.keycloak.models.jpa.entities.RoleEntity</class>
+        <class>org.keycloak.models.jpa.entities.RoleAttributeEntity</class>
         <class>org.keycloak.models.jpa.entities.FederatedIdentityEntity</class>
         <class>org.keycloak.models.jpa.entities.MigrationModelEntity</class>
         <class>org.keycloak.models.jpa.entities.UserEntity</class>
@@ -53,6 +54,7 @@
         <class>org.keycloak.models.jpa.entities.GroupRoleMappingEntity</class>
         <class>org.keycloak.models.jpa.entities.UserGroupMembershipEntity</class>
         <class>org.keycloak.models.jpa.entities.ClientScopeEntity</class>
+        <class>org.keycloak.models.jpa.entities.ClientScopeAttributeEntity</class>
         <class>org.keycloak.models.jpa.entities.ClientScopeRoleMappingEntity</class>
         <class>org.keycloak.models.jpa.entities.ClientScopeClientMappingEntity</class>
         <class>org.keycloak.models.jpa.entities.DefaultClientScopeRealmMappingEntity</class>
@@ -77,7 +79,6 @@
         <class>org.keycloak.storage.jpa.entity.FederatedUserConsentEntity</class>
         <class>org.keycloak.storage.jpa.entity.FederatedUserConsentClientScopeEntity</class>
         <class>org.keycloak.storage.jpa.entity.FederatedUserCredentialEntity</class>
-        <class>org.keycloak.storage.jpa.entity.FederatedUserCredentialAttributeEntity</class>
         <class>org.keycloak.storage.jpa.entity.FederatedUserGroupMembershipEntity</class>
         <class>org.keycloak.storage.jpa.entity.FederatedUserRequiredActionEntity</class>
         <class>org.keycloak.storage.jpa.entity.FederatedUserRoleMappingEntity</class>
